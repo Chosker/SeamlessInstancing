@@ -199,49 +199,49 @@ FORCEINLINE uint32 GetTypeHash(const FCachedCellCoord& Key)
 	return HashCombine(GetTypeHash(Key.X), GetTypeHash(Key.Y));
 }
 
-/** Reads the default WP grid cell size (in cm). */
-static int32 GetWorldPartitionCellSize(const UWorldPartition* WorldPartition)
+/** Reads the default WP grid cell size (in cm) from the editor spatial hash.
+ *  Uses reflection because CellSize is a private UPROPERTY(Config) on the hash. */
+static int32 GetWorldPartitionCellSize(const UWorldPartitionEditorSpatialHash* SpatialHash)
 {
-	if (!WorldPartition)
+	if (!SpatialHash)
 		return 25600;
 
-	return WorldPartition->DefaultGridCellSize;
+	FIntProperty* CellSizeProp = CastField<FIntProperty>(
+		UWorldPartitionEditorSpatialHash::StaticClass()->FindPropertyByName(TEXT("CellSize")));
+	if (!CellSizeProp)
+		return 25600;
+
+	return CellSizeProp->GetPropertyValue(CellSizeProp->ContainerPtrToValuePtr<int32>(SpatialHash));
 }
 
 
 /** Finds an existing aggregate actor for the given label, or creates one.
- *  Always returns an actor with a root component. */
-static AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers)
+ *  Always returns an actor with a root component.
+ *  @param ExistingByLabel  Pre-built map of existing aggregate actors by label (built once per conversion pass). */
+static AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers,
+	const TMap<FString, AActor*>& ExistingByLabel)
 {
-	// Look for an existing one by label (which encodes the cell coord)
-	AActor* AggregateActor = nullptr;
-	for (TActorIterator<AActor> It(World); It; ++It)
+	// O(1) lookup via the pre-built map instead of an O(N) TActorIterator scan.
+	if (const AActor* const* Found = ExistingByLabel.Find(Label))
 	{
-		if (It->GetActorLabel() == Label)
-		{
-			AggregateActor = *It;
-			break;
-		}
+		return const_cast<AActor*>(*Found);
 	}
 
-	if (!AggregateActor)
-	{
-		// Create a new one
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.bCreateActorPackage = (World->GetWorldPartition() != nullptr);
-		AggregateActor = World->SpawnActor<AActor>(SpawnParams);
-		AggregateActor->SetActorLabel(Label);
-		AggregateActor->Tags.AddUnique(TEXT("SeamlessInstanceActor"));
+	// Create a new one
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.bCreateActorPackage = (World->GetWorldPartition() != nullptr);
+	AActor* AggregateActor = World->SpawnActor<AActor>(SpawnParams);
+	AggregateActor->SetActorLabel(Label);
+	AggregateActor->Tags.AddUnique(TEXT("SeamlessInstanceActor"));
 
-		// Assign data layers from the partition key
-		for (const UDataLayerAsset* DL : DataLayers)
+	// Assign data layers from the partition key
+	for (const UDataLayerAsset* DL : DataLayers)
+	{
+		if (UDataLayerManager* DLMgr = World->GetDataLayerManager())
 		{
-			if (UDataLayerManager* DLMgr = World->GetDataLayerManager())
+			if (const UDataLayerInstance* DLInstance = DLMgr->GetDataLayerInstanceFromAsset(DL))
 			{
-				if (const UDataLayerInstance* DLInstance = DLMgr->GetDataLayerInstanceFromAsset(DL))
-				{
-					DLInstance->AddActor(AggregateActor);
-				}
+				DLInstance->AddActor(AggregateActor);
 			}
 		}
 	}
@@ -357,6 +357,17 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 	const TArray<FProperty*> RelevantProperties = GatherProperties();
 
+	// Single world scan to find any pre-existing aggregate actors so per-cell
+	// lookups are O(1) rather than a full TActorIterator scan per cell.
+	TMap<FString, AActor*> ExistingAggregateActors;
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		if (It->Tags.Contains(TEXT("SeamlessInstanceActor")))
+		{
+			ExistingAggregateActors.Add(It->GetActorLabel(), *It);
+		}
+	}
+
 	// Determine whether to split into partition cells and what cell size to use.
 	// The editor spatial hash's GetCellCoords uses the configured WP grid cell size.
 	bool bUseCellGrouping = false;
@@ -373,7 +384,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			{
 				bUseCellGrouping = true;
 
-				const int32 CellSize = GetWorldPartitionCellSize(WorldPartition);
+				const int32 CellSize = GetWorldPartitionCellSize(EditorSpatialHash);
 
 				for (AStaticMeshActor* SMActor : ActorsToConvert)
 				{
@@ -386,7 +397,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 					if (!Found)
 					{
 						FString Label = FString::Printf(TEXT("SeamlessInstanceActor_%lld_%lld"), Cell.X, Cell.Y);
-						Found = FindOrCreateAggregateActor(World, Label, SMActor->GetDataLayerAssets());
+						Found = FindOrCreateAggregateActor(World, Label, SMActor->GetDataLayerAssets(), ExistingAggregateActors);
 
 						// Center the aggregate on its WP tile so the actor origin isn't arbitrary.
 						Found->SetActorLocation(FVector(
@@ -403,7 +414,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 	if (!bUseCellGrouping)
 	{
 		// Single aggregate for non-WP or non-streaming worlds
-		AActor* SingleActor = FindOrCreateAggregateActor(World, TEXT("SeamlessInstanceActor_0_0"), {});
+		AActor* SingleActor = FindOrCreateAggregateActor(World, TEXT("SeamlessInstanceActor_0_0"), {}, ExistingAggregateActors);
 		CellToAggregate.Add(FCachedCellCoord{0, 0}, SingleActor);
 	}
 
