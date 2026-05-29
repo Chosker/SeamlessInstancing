@@ -357,6 +357,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 	bool bUseCellGrouping = false;
 	UWorldPartitionEditorSpatialHash* EditorSpatialHash = nullptr;
 	TMap<FCachedCellCoord, AActor*> CellToAggregate;
+	TMap<AStaticMeshActor*, FCachedCellCoord> ActorToCell;
 
 	if (UWorldPartition* WorldPartition = World->GetWorldPartition())
 	{
@@ -373,6 +374,8 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 				{
 					UWorldPartitionEditorSpatialHash::FCellCoord Cell = EditorSpatialHash->GetCellCoords(SMActor->GetActorLocation(), 0);
 					FCachedCellCoord CacheKey{Cell.X, Cell.Y};
+
+					ActorToCell.Add(SMActor, CacheKey);
 
 					AActor*& Found = CellToAggregate.FindOrAdd(CacheKey);
 					if (!Found)
@@ -424,8 +427,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 		if (bUseCellGrouping)
 		{
-			UWorldPartitionEditorSpatialHash::FCellCoord Cell = EditorSpatialHash->GetCellCoords(SMActor->GetActorLocation(), 0);
-			AggregateActor = CellToAggregate[FCachedCellCoord{Cell.X, Cell.Y}];
+			AggregateActor = CellToAggregate[ActorToCell[SMActor]];
 		}
 		else
 		{
