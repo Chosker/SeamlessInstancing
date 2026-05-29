@@ -54,18 +54,17 @@ static bool ShouldInclude(const FProperty* Prop)
 
 	// Skip administrative/internal properties that shouldn't be copied
 	// onto the destination ISMC.
-	static const FName SkipNames[] = {
-		"CreationMethod",              // would overwrite AddInstanceComponent's setting
-		"ComponentInstanceDataCache",  // internal cache
-		"RelativeLocation",            // transform — each instance has its own via AddInstance
-		"RelativeRotation",
-		"RelativeScale3D",
-		"AttachSocketName",            // attachment wiring
+	static const TSet<FName> SkipNames = {
+		TEXT("CreationMethod"),              // would overwrite AddInstanceComponent's setting
+		TEXT("ComponentInstanceDataCache"),  // internal cache
+		TEXT("RelativeLocation"),            // transform — each instance has its own via AddInstance
+		TEXT("RelativeRotation"),
+		TEXT("RelativeScale3D"),
+		TEXT("AttachSocketName"),            // attachment wiring
 	};
-	const FName Name = Prop->GetFName();
-	for (const FName& Skip : SkipNames)
+	if (SkipNames.Contains(Prop->GetFName()))
 	{
-		if (Name == Skip) return false;
+		return false;
 	}
 
 	return true;
