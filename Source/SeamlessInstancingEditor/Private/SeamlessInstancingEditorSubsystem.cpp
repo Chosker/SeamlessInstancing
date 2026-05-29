@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "SeamlessInstancingEditorSubsystem.h"
+#include "SeamlessInstancingEditorModule.h"
 
 #include "Editor.h"
 #include "EngineUtils.h"
@@ -289,7 +290,7 @@ void USeamlessInstancingEditorSubsystem::Initialize(FSubsystemCollectionBase& Co
 		TryBindSelectionEvents();
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("SeamlessInstancingEditorSubsystem initialized."));
+	UE_LOG(LogSeamlessInstancing, Log, TEXT("SeamlessInstancingEditorSubsystem initialized."));
 }
 
 void USeamlessInstancingEditorSubsystem::Deinitialize()
@@ -315,7 +316,7 @@ void USeamlessInstancingEditorSubsystem::Deinitialize()
 	bIsConverting = false;
 	bSelectionEventsBound = false;
 
-	UE_LOG(LogTemp, Log, TEXT("SeamlessInstancingEditorSubsystem deinitialized."));
+	UE_LOG(LogSeamlessInstancing, Log, TEXT("SeamlessInstancingEditorSubsystem deinitialized."));
 
 	Super::Deinitialize();
 }
@@ -565,7 +566,7 @@ void USeamlessInstancingEditorSubsystem::TryBindSelectionEvents()
 			bSelectionEventsBound = true;
 			TickerHandle.Reset();
 
-			UE_LOG(LogTemp, Log, TEXT("SeamlessInstancingEditorSubsystem: selection events bound."));
+			UE_LOG(LogSeamlessInstancing, Log, TEXT("SeamlessInstancingEditorSubsystem: selection events bound."));
 			return;
 		}
 	}

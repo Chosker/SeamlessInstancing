@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleInterface.h"
 
+DECLARE_LOG_CATEGORY_EXTERN(LogSeamlessInstancing, Log, All);
+
 class UToolMenu;
 
 /**

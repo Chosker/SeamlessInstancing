@@ -9,6 +9,8 @@
 
 #define LOCTEXT_NAMESPACE "SeamlessInstancing"
 
+DEFINE_LOG_CATEGORY(LogSeamlessInstancing);
+
 void FSeamlessInstancingEditorModule::StartupModule()
 {
 	if (IsRunningCommandlet())
