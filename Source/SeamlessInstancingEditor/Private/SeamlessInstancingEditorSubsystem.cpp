@@ -236,12 +236,7 @@ void USeamlessInstancingEditorSubsystem::ConvertAllInstancedToSM()
 	UWorld* World = GEditor->GetEditorWorldContext().World();
 	if (!World) return;
 
-	const TArray<FProperty*> RelevantProperties = GatherProperties();
-
-	GEditor->BeginTransaction(LOCTEXT("ConvertInstancedToSM", "Convert Instanced to SM Actors"));
-
-	// Collect all aggregate actors to convert (there may be one per WP cell).
-	TArray<AActor*> AggregatesToDestroy;
+	TArray<AActor*> AggregatesToConvert;
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		if (!It->Tags.Contains(TEXT("SeamlessInstanceActor")))
@@ -253,6 +248,32 @@ void USeamlessInstancingEditorSubsystem::ConvertAllInstancedToSM()
 
 		if (ISMCs.IsEmpty())
 			continue;
+
+		AggregatesToConvert.Add(Aggregate);
+	}
+
+	if (AggregatesToConvert.IsEmpty())
+	{
+		return;
+	}
+
+	ConvertInstancedToSM(AggregatesToConvert);
+}
+
+void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActor*>& AggregatesToConvert)
+{
+	UWorld* World = GEditor->GetEditorWorldContext().World();
+	if (!World) return;
+
+	const TArray<FProperty*> RelevantProperties = GatherProperties();
+
+	GEditor->BeginTransaction(LOCTEXT("ConvertInstancedToSM", "Convert Instanced to SM Actors"));
+
+	TArray<AActor*> AggregatesToDestroy;
+	for (AActor* Aggregate : AggregatesToConvert)
+	{
+		TArray<UInstancedStaticMeshComponent*> ISMCs;
+		Aggregate->GetComponents(ISMCs);
 
 		for (UInstancedStaticMeshComponent* ISMC : ISMCs)
 		{

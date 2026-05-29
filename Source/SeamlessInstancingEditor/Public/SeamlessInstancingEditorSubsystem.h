@@ -33,6 +33,9 @@ public:
 	/** Converts instanced static mesh components back to individual static mesh actors. */
 	void ConvertAllInstancedToSM();
 
+	/** Converts a given set of aggregate actors back to individual static mesh actors. */
+	void ConvertInstancedToSM(const TArray<AActor*>& AggregatesToConvert);
+
 	/** Toggle the seamless instancing mode on/off. Flushes to config immediately. */
 	void SetSeamlessEnabled(bool bEnabled);
 
