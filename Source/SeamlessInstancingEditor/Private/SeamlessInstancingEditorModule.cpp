@@ -9,11 +9,6 @@
 
 #define LOCTEXT_NAMESPACE "SeamlessInstancing"
 
-// TO DO
-// make new button to clean or update actors. should recreate or repopulate SeamlessInstanceActors if world partition cell has changed
-// check datalayer functionality
-// non- world partition functionality
-
 void FSeamlessInstancingEditorModule::StartupModule()
 {
 	if (IsRunningCommandlet())
@@ -57,6 +52,8 @@ void FSeamlessInstancingEditorModule::ShutdownModule()
 
 void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 {
+	USeamlessInstancingEditorSubsystem* InstancingSubsystem = GEditor ? GEditor->GetEditorSubsystem<USeamlessInstancingEditorSubsystem>() : nullptr;
+
 	InMenu->AddSection("Options", LOCTEXT("OptionsSection", "Options"));
 
 	FToolMenuEntry ToggleEntry = FToolMenuEntry::InitMenuEntry(
@@ -65,19 +62,19 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 		LOCTEXT("ToggleSeamlessInstancingTooltip", "Enable seamless instancing"),
 		FSlateIcon(),
 		FUIAction(
-			FExecuteAction::CreateLambda([]
+			FExecuteAction::CreateLambda([InstancingSubsystem]
 			{
-				if (USeamlessInstancingEditorSubsystem* Subsystem = GEditor->GetEditorSubsystem<USeamlessInstancingEditorSubsystem>())
+				if (InstancingSubsystem)
 				{
-					Subsystem->SetSeamlessEnabled(!Subsystem->IsSeamlessEnabled());
+					InstancingSubsystem->SetSeamlessEnabled(!InstancingSubsystem->IsSeamlessEnabled());
 				}
 			}),
 			FCanExecuteAction(),
-			FIsActionChecked::CreateLambda([]
+			FIsActionChecked::CreateLambda([InstancingSubsystem]
 			{
-				if (USeamlessInstancingEditorSubsystem* Subsystem = GEditor->GetEditorSubsystem<USeamlessInstancingEditorSubsystem>())
+				if (InstancingSubsystem)
 				{
-					return Subsystem->IsSeamlessEnabled();
+					return InstancingSubsystem->IsSeamlessEnabled();
 				}
 				return false;
 			})
@@ -88,35 +85,35 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 
 	InMenu->AddSection("Actions", LOCTEXT("ActionsSection", "Actions"));
 
-	FToolMenuEntry ConvertToInstanced = FToolMenuEntry::InitMenuEntry(
+	FToolMenuEntry ConvertSMToInstanced = FToolMenuEntry::InitMenuEntry(
 		"ConvertAllSMToInstanced",
 		LOCTEXT("ConvertAllSMToInstanced", "Convert All SM Actors to Instanced"),
 		LOCTEXT("ConvertAllSMToInstancedTooltip", "Converts all StaticMesh actors in the world to instanced static mesh components"),
 		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateLambda([]
+		FUIAction(FExecuteAction::CreateLambda([InstancingSubsystem]
 		{
-			if (USeamlessInstancingEditorSubsystem* Subsystem = GEditor->GetEditorSubsystem<USeamlessInstancingEditorSubsystem>())
+			if (InstancingSubsystem)
 			{
-				Subsystem->ConvertAllSMToInstanced();
+				InstancingSubsystem->ConvertAllSMToInstanced();
 			}
 		}))
 	);
-	InMenu->AddMenuEntry("Actions", ConvertToInstanced);
+	InMenu->AddMenuEntry("Actions", ConvertSMToInstanced);
 
-	FToolMenuEntry ConvertToSM = FToolMenuEntry::InitMenuEntry(
+	FToolMenuEntry ConvertInstancedToSM = FToolMenuEntry::InitMenuEntry(
 		"ConvertAllInstancedToSM",
 		LOCTEXT("ConvertAllInstancedToSM", "Convert All Instanced to SM Actors"),
 		LOCTEXT("ConvertAllInstancedToSMTooltip", "Converts all instanced static mesh components back to individual static mesh actors"),
 		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateLambda([]
+		FUIAction(FExecuteAction::CreateLambda([InstancingSubsystem]
 		{
-			if (USeamlessInstancingEditorSubsystem* Subsystem = GEditor->GetEditorSubsystem<USeamlessInstancingEditorSubsystem>())
+			if (InstancingSubsystem)
 			{
-				Subsystem->ConvertAllInstancedToSM();
+				InstancingSubsystem->ConvertAllInstancedToSM();
 			}
 		}))
 	);
-	InMenu->AddMenuEntry("Actions", ConvertToSM);
+	InMenu->AddMenuEntry("Actions", ConvertInstancedToSM);
 }
 
 #undef LOCTEXT_NAMESPACE
