@@ -199,18 +199,13 @@ FORCEINLINE uint32 GetTypeHash(const FCachedCellCoord& Key)
 	return HashCombine(GetTypeHash(Key.X), GetTypeHash(Key.Y));
 }
 
-/** Reads the default WP grid cell size (in cm) via reflection. */
+/** Reads the default WP grid cell size (in cm). */
 static int32 GetWorldPartitionCellSize(const UWorldPartition* WorldPartition)
 {
 	if (!WorldPartition)
 		return 25600;
 
-	FIntProperty* CellSizeProp = CastField<FIntProperty>(
-		UWorldPartition::StaticClass()->FindPropertyByName(TEXT("DefaultGridCellSize")));
-	if (!CellSizeProp)
-		return 25600;
-
-	return CellSizeProp->GetPropertyValue(CellSizeProp->ContainerPtrToValuePtr<int32>(WorldPartition));
+	return WorldPartition->DefaultGridCellSize;
 }
 
 
