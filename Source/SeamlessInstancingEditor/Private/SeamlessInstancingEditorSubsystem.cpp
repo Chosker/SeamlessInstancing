@@ -502,14 +502,11 @@ void USeamlessInstancingEditorSubsystem::ConvertAllInstancedToSM()
 		if (ISMCs.IsEmpty())
 			continue;
 
-		Aggregate->Modify();
-
 		for (UInstancedStaticMeshComponent* ISMC : ISMCs)
 		{
 			UStaticMesh* Mesh = ISMC->GetStaticMesh();
 			if (!Mesh) continue;
 
-			ISMC->Modify();
 			const int32 NumInstances = ISMC->GetInstanceCount();
 
 			for (int32 i = 0; i < NumInstances; ++i)
@@ -534,9 +531,6 @@ void USeamlessInstancingEditorSubsystem::ConvertAllInstancedToSM()
 
 				NewSMC->MarkRenderStateDirty();
 			}
-
-			ISMC->ClearInstances();
-			ISMC->DestroyComponent(/*bPromoteChildren=*/false);
 		}
 
 		AggregatesToDestroy.Add(Aggregate);
