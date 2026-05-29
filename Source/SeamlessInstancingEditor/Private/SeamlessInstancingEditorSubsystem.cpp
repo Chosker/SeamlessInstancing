@@ -149,9 +149,8 @@ static TArray<FProperty*> GatherProperties()
 }
 
 /** Compute a hash of all "data" property values on a component. */
-static uint32 HashComponentProperties(UStaticMeshComponent* Component)
+static uint32 HashComponentProperties(UStaticMeshComponent* Component, const TArray<FProperty*>& Properties)
 {
-	const TArray<FProperty*> Properties = GatherProperties();
 	FBufferArchive Ar;
 
 	for (FProperty* Prop : Properties)
@@ -439,7 +438,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 		FInstanceGroupKey InstanceKey;
 		InstanceKey.Mesh = SMC->GetStaticMesh();
-		InstanceKey.PropertiesHash = HashComponentProperties(SMC);
+		InstanceKey.PropertiesHash = HashComponentProperties(SMC, RelevantProperties);
 
 		TMap<FInstanceGroupKey, UInstancedStaticMeshComponent*>& MeshToComponent = AggregateToMeshMap.FindOrAdd(AggregateActor);
 		UInstancedStaticMeshComponent* ISMC = MeshToComponent.FindRef(InstanceKey);
