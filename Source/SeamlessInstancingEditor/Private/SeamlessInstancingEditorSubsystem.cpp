@@ -218,7 +218,10 @@ static int32 GetWorldPartitionCellSize(const UWorldPartitionEditorSpatialHash* S
 
 /** Finds an existing aggregate actor for the given label, or creates one.
  *  Always returns an actor with a root component.
- *  @param ExistingByLabel  Pre-built map of existing aggregate actors by label (built once per conversion pass). */
+ *  @param ExistingByLabel  Pre-built map of existing aggregate actors by label
+ *                         (built once per conversion pass; new creations go into
+ *                         CellToAggregate on return, not back into this map).
+ */
 static AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers,
 	const TMap<FString, AActor*>& ExistingByLabel)
 {
