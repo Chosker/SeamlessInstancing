@@ -425,16 +425,8 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 	for (AStaticMeshActor* SMActor : ActorsToConvert)
 	{
-		AActor* AggregateActor = nullptr;
-
-		if (bUseCellGrouping)
-		{
-			AggregateActor = CellToAggregate[ActorToCell[SMActor]];
-		}
-		else
-		{
-			AggregateActor = CellToAggregate[FCachedCellCoord{0, 0}];
-		}
+		const FCachedCellCoord CellKey = bUseCellGrouping ? ActorToCell[SMActor] : FCachedCellCoord{0, 0};
+		AActor* AggregateActor = CellToAggregate[CellKey];
 
 		if (SMActor == AggregateActor) continue;
 
