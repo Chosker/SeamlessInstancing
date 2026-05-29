@@ -33,6 +33,12 @@ public:
 	/** Converts instanced static mesh components back to individual static mesh actors. */
 	void ConvertAllInstancedToSM();
 
+	/** Toggle the seamless instancing mode on/off. Flushes to config immediately. */
+	void SetSeamlessEnabled(bool bEnabled);
+
+	/** Returns true if seamless instancing mode is currently enabled (cached). */
+	bool IsSeamlessEnabled() const { return bCachedSeamlessEnabled; }
+
 private:
 	/** Called when level editor selection changes. Converts deselected StaticMeshActors to instances if seamless mode is active. */
 	UFUNCTION()
@@ -49,4 +55,7 @@ private:
 
 	/** Set of actors that were selected before the most recent selection change. */
 	TSet<TWeakObjectPtr<AActor>> PreviousSelectedActors;
+
+	/** Cached value of bEnableSeamless from GEditorPerProjectIni to avoid config reads on every selection event. */
+	bool bCachedSeamlessEnabled = false;
 };

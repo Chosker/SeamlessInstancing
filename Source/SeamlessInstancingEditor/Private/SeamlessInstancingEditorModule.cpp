@@ -67,17 +67,19 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 		FUIAction(
 			FExecuteAction::CreateLambda([]
 			{
-				bool bValue = false;
-				GConfig->GetBool(TEXT("SeamlessInstancing"), TEXT("bEnableSeamless"), bValue, GEditorPerProjectIni);
-				GConfig->SetBool(TEXT("SeamlessInstancing"), TEXT("bEnableSeamless"), !bValue, GEditorPerProjectIni);
-				GConfig->Flush(false, GEditorPerProjectIni);
+				if (USeamlessInstancingEditorSubsystem* Subsystem = GEditor->GetEditorSubsystem<USeamlessInstancingEditorSubsystem>())
+				{
+					Subsystem->SetSeamlessEnabled(!Subsystem->IsSeamlessEnabled());
+				}
 			}),
 			FCanExecuteAction(),
 			FIsActionChecked::CreateLambda([]
 			{
-				bool bValue = false;
-				GConfig->GetBool(TEXT("SeamlessInstancing"), TEXT("bEnableSeamless"), bValue, GEditorPerProjectIni);
-				return bValue;
+				if (USeamlessInstancingEditorSubsystem* Subsystem = GEditor->GetEditorSubsystem<USeamlessInstancingEditorSubsystem>())
+				{
+					return Subsystem->IsSeamlessEnabled();
+				}
+				return false;
 			})
 		),
 		EUserInterfaceActionType::Check

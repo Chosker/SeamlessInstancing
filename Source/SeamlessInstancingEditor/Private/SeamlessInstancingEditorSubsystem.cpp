@@ -263,6 +263,10 @@ void USeamlessInstancingEditorSubsystem::Initialize(FSubsystemCollectionBase& Co
 	{
 		Collection.InitializeDependency<ULevelEditorSubsystem>();
 
+		// Cache the seamless-instancing toggle from config so we don't need
+		// to read GEditorPerProjectIni on every selection-change event.
+		GConfig->GetBool(TEXT("SeamlessInstancing"), TEXT("bEnableSeamless"), bCachedSeamlessEnabled, GEditorPerProjectIni);
+
 		// Prime the previous-selection set from the current state.
 		if (USelection* ActorSelection = GEditor->GetSelectedActors())
 		{
@@ -542,6 +546,13 @@ void USeamlessInstancingEditorSubsystem::ConvertAllInstancedToSM()
 	GEditor->EndTransaction();
 }
 
+void USeamlessInstancingEditorSubsystem::SetSeamlessEnabled(bool bEnabled)
+{
+	bCachedSeamlessEnabled = bEnabled;
+	GConfig->SetBool(TEXT("SeamlessInstancing"), TEXT("bEnableSeamless"), bEnabled, GEditorPerProjectIni);
+	GConfig->Flush(false, GEditorPerProjectIni);
+}
+
 // ----- Lazy binding ---------------------------------------------------------
 
 void USeamlessInstancingEditorSubsystem::TryBindSelectionEvents()
@@ -593,9 +604,7 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 		return;
 	}
 
-	bool bEnabled = false;
-	GConfig->GetBool(TEXT("SeamlessInstancing"), TEXT("bEnableSeamless"), bEnabled, GEditorPerProjectIni);
-	if (!bEnabled)
+	if (!IsSeamlessEnabled())
 	{
 		return;
 	}
