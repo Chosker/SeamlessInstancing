@@ -216,41 +216,53 @@ static int32 GetWorldPartitionCellSize(const UWorldPartition* WorldPartition)
 }
 
 
-/** Finds an existing aggregate actor for the given label, or creates one. */
+/** Finds an existing aggregate actor for the given label, or creates one.
+ *  Always returns an actor with a root component. */
 static AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers)
 {
 	// Look for an existing one by label (which encodes the cell coord)
-	AActor* Existing = nullptr;
+	AActor* AggregateActor = nullptr;
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		if (It->GetActorLabel() == Label)
 		{
-			Existing = *It;
+			AggregateActor = *It;
 			break;
 		}
 	}
-	if (Existing) return Existing;
 
-	// Create a new one
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.bCreateActorPackage = (World->GetWorldPartition() != nullptr);
-	AActor* Actor = World->SpawnActor<AActor>(SpawnParams);
-	Actor->SetActorLabel(Label);
-	Actor->Tags.AddUnique(TEXT("SeamlessInstanceActor"));
-
-	// Assign data layers from the partition key
-	for (const UDataLayerAsset* DL : DataLayers)
+	if (!AggregateActor)
 	{
-		if (UDataLayerManager* DLMgr = World->GetDataLayerManager())
+		// Create a new one
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.bCreateActorPackage = (World->GetWorldPartition() != nullptr);
+		AggregateActor = World->SpawnActor<AActor>(SpawnParams);
+		AggregateActor->SetActorLabel(Label);
+		AggregateActor->Tags.AddUnique(TEXT("SeamlessInstanceActor"));
+
+		// Assign data layers from the partition key
+		for (const UDataLayerAsset* DL : DataLayers)
 		{
-			if (const UDataLayerInstance* DLInstance = DLMgr->GetDataLayerInstanceFromAsset(DL))
+			if (UDataLayerManager* DLMgr = World->GetDataLayerManager())
 			{
-				DLInstance->AddActor(Actor);
+				if (const UDataLayerInstance* DLInstance = DLMgr->GetDataLayerInstanceFromAsset(DL))
+				{
+					DLInstance->AddActor(AggregateActor);
+				}
 			}
 		}
 	}
 
-	return Actor;
+	// Ensure every aggregate actor has a root component so we can attach ISMCs.
+	if (!AggregateActor->GetRootComponent())
+	{
+		USceneComponent* Root = NewObject<USceneComponent>(AggregateActor);
+		Root->SetFlags(RF_Transactional);
+		AggregateActor->SetRootComponent(Root);
+		Root->RegisterComponent();
+	}
+
+	return AggregateActor;
 }
 
 // ----- Subsystem implementation -------------------------------------------
@@ -382,13 +394,6 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 					{
 						FString Label = FString::Printf(TEXT("SeamlessInstanceActor_%lld_%lld"), Cell.X, Cell.Y);
 						Found = FindOrCreateAggregateActor(World, Label, SMActor->GetDataLayerAssets());
-						if (!Found->GetRootComponent())
-						{
-							USceneComponent* Root = NewObject<USceneComponent>(Found);
-							Root->SetFlags(RF_Transactional);
-							Found->SetRootComponent(Root);
-							Root->RegisterComponent();
-						}
 
 						// Center the aggregate on its WP tile so the actor origin isn't arbitrary.
 						Found->SetActorLocation(FVector(
@@ -407,13 +412,6 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 		// Single aggregate for non-WP or non-streaming worlds
 		AActor* SingleActor = FindOrCreateAggregateActor(World, TEXT("SeamlessInstanceActor_0_0"), {});
 		CellToAggregate.Add(FCachedCellCoord{0, 0}, SingleActor);
-		if (!SingleActor->GetRootComponent())
-		{
-			USceneComponent* Root = NewObject<USceneComponent>(SingleActor);
-			Root->SetFlags(RF_Transactional);
-			SingleActor->SetRootComponent(Root);
-			Root->RegisterComponent();
-		}
 	}
 
 	TMap<AActor*, TMap<FInstanceGroupKey, UInstancedStaticMeshComponent*>> AggregateToMeshMap;
