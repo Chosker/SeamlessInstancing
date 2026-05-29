@@ -5,7 +5,7 @@
 #include "SeamlessInstancingStyle.h"
 
 #include "ToolMenus.h"
-#include "Editor.h"
+#include "Editor/EditorEngine.h"
 
 #define LOCTEXT_NAMESPACE "SeamlessInstancing"
 
