@@ -583,6 +583,15 @@ void USeamlessInstancingEditorSubsystem::BreakInstance(
 
 	const TArray<FProperty*> RelevantProperties = GatherProperties();
 
+	// Deselect the aggregate before breaking the instance so the viewport
+	// never renders the full aggregate outline while we're inside this
+	// transaction.  The re-entrant OnSelectionChanged call is guarded by
+	// bIsConverting (set in OnSelectionChanged before calling us).
+	if (GEditor)
+	{
+		GEditor->SelectActor(Aggregate, /*bSelected=*/false, /*bNotify=*/true);
+	}
+
 	GEditor->BeginTransaction(LOCTEXT("BreakInstance", "Break Instance"));
 
 	AStaticMeshActor* NewSMActor = World->SpawnActor<AStaticMeshActor>();
@@ -620,21 +629,14 @@ void USeamlessInstancingEditorSubsystem::BreakInstance(
 
 	GEditor->EndTransaction();
 
-	// Defer selection changes to the next tick so we don't modify the
-	// selection set from within a selection-change notification.
-	TWeakObjectPtr<AActor> WeakAggregate = Aggregate;
+	// Defer selection of the newly broken-out actor to the next tick so we
+	// don't modify the selection set from within a selection-change notification.
 	TWeakObjectPtr<AStaticMeshActor> WeakNewActor = NewSMActor;
 	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
-		[WeakAggregate, WeakNewActor](float) -> bool
+		[WeakNewActor](float) -> bool
 		{
 			if (GEditor)
 			{
-				// Deselect the aggregate (it now has one fewer instance).
-				if (AActor* Agg = WeakAggregate.Get())
-				{
-					GEditor->SelectActor(Agg, /*bSelected=*/false, /*bNotify=*/true);
-				}
-				// Select the newly broken-out standalone actor.
 				if (AStaticMeshActor* NewActor = WeakNewActor.Get())
 				{
 					GEditor->SelectActor(NewActor, /*bSelected=*/true, /*bNotify=*/true);
