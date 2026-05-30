@@ -178,7 +178,6 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 		CellToAggregate.Add(FCachedCellCoord{0, 0}, SingleActor);
 	}
 
-	TMap<AActor*, TMap<FInstanceGroupKey, UInstancedStaticMeshComponent*>> AggregateToMeshMap;
 	TArray<AActor*> ActorsToDestroy;
 
 	GEditor->BeginTransaction(LOCTEXT("ConvertSMToInstanced", "Convert SM Actors to Instanced"));
@@ -197,8 +196,31 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 		InstanceKey.Mesh = SMC->GetStaticMesh();
 		InstanceKey.PropertiesHash = HashComponentProperties(SMC, RelevantProperties);
 
-		TMap<FInstanceGroupKey, UInstancedStaticMeshComponent*>& MeshToComponent = AggregateToMeshMap.FindOrAdd(AggregateActor);
-		UInstancedStaticMeshComponent* ISMC = MeshToComponent.FindRef(InstanceKey);
+		// Scan the aggregate for an existing ISMC with matching mesh and properties.
+		// This handles the case where ConvertSMToInstanced is called repeatedly
+		// (e.g. one actor at a time via OnSelectionChanged) — previously created
+		// ISMCs persist on the aggregate between calls.
+		//
+		// We use ComponentTags to store the source SMC's property hash because
+		// CopyCompleteValue_InContainer does not produce byte-identical values
+		// on the ISMC — recomputing the hash from the existing ISMC would
+		// never match the incoming SMC's hash.
+		UInstancedStaticMeshComponent* ISMC = nullptr;
+		{
+			TArray<UInstancedStaticMeshComponent*> ExistingISMCs;
+			AggregateActor->GetComponents(ExistingISMCs);
+			const FName IncomingHashTag = FName(*FString::Printf(TEXT("SrcHash_%u"), InstanceKey.PropertiesHash));
+			for (UInstancedStaticMeshComponent* Existing : ExistingISMCs)
+			{
+				if (Existing->GetStaticMesh() == InstanceKey.Mesh
+					&& Existing->ComponentTags.Contains(IncomingHashTag))
+				{
+					ISMC = Existing;
+					break;
+				}
+			}
+		}
+
 		if (!ISMC)
 		{
 			ISMC = NewObject<UInstancedStaticMeshComponent>(AggregateActor);
@@ -209,6 +231,9 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			ISMC->RegisterComponent();
 
 			// Copy all included properties from source SMC onto the new ISMC.
+			// This must happen BEFORE stamping SrcHash — CopyCompleteValue_InContainer
+			// overwrites ComponentTags (which is an included property), which would
+			// erase the tag and prevent future lookups from finding this ISMC.
 			for (FProperty* Prop : RelevantProperties)
 			{
 				if (!ShouldInclude(Prop))
@@ -216,7 +241,8 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 				Prop->CopyCompleteValue_InContainer(ISMC, SMC);
 			}
 
-			MeshToComponent.Add(InstanceKey, ISMC);
+			// Stamp the source properties hash so future calls can find this ISMC.
+			ISMC->ComponentTags.Add(FName(*FString::Printf(TEXT("SrcHash_%u"), InstanceKey.PropertiesHash)));
 		}
 
 		ISMC->AddInstance(SMActor->GetTransform(), /*bWorldSpace=*/true);

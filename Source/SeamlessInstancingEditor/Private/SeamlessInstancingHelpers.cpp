@@ -49,6 +49,10 @@ bool ShouldInclude(const FProperty* Prop)
 		TEXT("RelativeRotation"),
 		TEXT("RelativeScale3D"),
 		TEXT("AttachSocketName"),            // attachment wiring
+		TEXT("ComponentTags"),               // labels only; the SrcHash_* tag we stamp on the ISMC
+		                                     // lives here and would cause hash mismatches if included,
+		                                     // and two identical components with different tags should
+		                                     // still merge into the same ISM group
 	};
 	if (SkipNames.Contains(Prop->GetFName()))
 	{
@@ -120,9 +124,9 @@ TArray<FProperty*> GatherProperties()
 		 Class && Class != UObject::StaticClass();
 		 Class = Class->GetSuperClass())
 	{
-		for (FProperty* Prop = Class->PropertyLink; Prop; Prop = Prop->PropertyLinkNext)
+		for (TFieldIterator<FProperty> It(Class, EFieldIterationFlags::None); It; ++It)
 		{
-			Props.Add(Prop);
+			Props.Add(*It);
 		}
 	}
 	return Props;
