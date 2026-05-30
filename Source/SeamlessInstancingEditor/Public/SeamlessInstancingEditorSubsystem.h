@@ -61,4 +61,15 @@ private:
 
 	/** Cached value of bEnableSeamless from GEditorPerProjectIni to avoid config reads on every selection event. */
 	bool bCachedSeamlessEnabled = false;
+
+	/**
+	 * Uses the editor viewport's hit-proxy system to find which ISM instance
+	 * on the aggregate is currently under the cursor (the same mechanism the
+	 * engine uses for actor selection in the viewport).
+	 */
+	bool FindClickedInstance(AActor* Aggregate,
+		int32& OutInstanceIndex, UInstancedStaticMeshComponent*& OutISMC) const;
+
+	/** Converts a single ISM instance back to a StaticMeshActor and selects it. */
+	void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex);
 };

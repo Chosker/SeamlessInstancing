@@ -12,8 +12,10 @@
 #include "WorldPartition/WorldPartition.h"
 #include "WorldPartition/WorldPartitionEditorSpatialHash.h"
 #include "Engine/StaticMeshActor.h"
+#include "EditorViewportClient.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "SceneView.h"
 
 #define LOCTEXT_NAMESPACE "SeamlessInstancing"
 
@@ -420,7 +422,7 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 		});
 	}
 
-	// Find actors that were selected before but aren't anymore.
+	// Find actors that were selected before but aren't anymore (SM -> ISM).
 	TArray<AStaticMeshActor*> ActorsToConvert;
 	for (const TWeakObjectPtr<AActor>& PrevActor : PreviousSelectedActors)
 	{
@@ -443,15 +445,304 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 		}
 	}
 
+	// Find newly selected aggregates (ISM -> SM).
+	// We compare against PreviousSelectedActors to only react when an aggregate
+	// was NOT selected before the most recent selection change (i.e. it was just
+	// clicked/selected in the viewport or outliner).
+	TArray<AActor*> NewlySelectedAggregates;
+	for (const TWeakObjectPtr<AActor>& CurrentActor : CurrentSelection)
+	{
+		AActor* Actor = CurrentActor.Get();
+		if (!Actor) continue;
+		if (Actor->Tags.Contains(TEXT("SeamlessInstanceActor")) && !PreviousSelectedActors.Contains(Actor))
+		{
+			NewlySelectedAggregates.Add(Actor);
+		}
+	}
+
 	// Update tracking before converting so re-entrant events from DestroyActor
 	// see a consistent state.
 	PreviousSelectedActors = CurrentSelection;
 
+	if (ActorsToConvert.IsEmpty() && NewlySelectedAggregates.IsEmpty())
+	{
+		return;
+	}
+
+	TGuardValue<bool> Guard(bIsConverting, true);
+
+	// Convert deselected SM actors to ISM instances (existing direction).
 	if (!ActorsToConvert.IsEmpty())
 	{
-		TGuardValue<bool> Guard(bIsConverting, true);
 		ConvertSMToInstanced(ActorsToConvert);
 	}
+
+	// Convert clicked ISM instances back to SM actors (reverse direction).
+	if (!NewlySelectedAggregates.IsEmpty())
+	{
+		for (AActor* Aggregate : NewlySelectedAggregates)
+		{
+			int32 InstanceIndex = INDEX_NONE;
+			UInstancedStaticMeshComponent* HitISMC = nullptr;
+			if (FindClickedInstance(Aggregate, InstanceIndex, HitISMC))
+			{
+				BreakInstance(HitISMC, InstanceIndex);
+			}
+		}
+	}
+}
+
+// ----- FindClickedInstance --------------------------------------------------
+
+bool USeamlessInstancingEditorSubsystem::FindClickedInstance(
+	AActor* Aggregate,
+	int32& OutInstanceIndex, UInstancedStaticMeshComponent*& OutISMC) const
+{
+	if (!GEditor || !Aggregate) return false;
+
+	TArray<UInstancedStaticMeshComponent*> ISMCs;
+	Aggregate->GetComponents(ISMCs);
+	if (ISMCs.IsEmpty()) return false;
+
+	UWorld* World = Aggregate->GetWorld();
+	if (!World) return false;
+
+	// ====================================================================
+	// STRATEGY A — GEditor->ClickLocation + bounding-box containment
+	//
+	// GEditor->ClickLocation is set by the engine during viewport click
+	// processing to the world-space point on the mesh surface.  Since the
+	// bounding box of every instance encloses its mesh, the click point
+	// *must* fall inside exactly one box.  This is the simplest and most
+	// reliable method — no deprojection math at all.
+	// ====================================================================
+	{
+		const FVector ClickLocation = GEditor->ClickLocation;
+		if (!ClickLocation.IsNearlyZero())
+		{
+			for (UInstancedStaticMeshComponent* ISMC : ISMCs)
+			{
+				UStaticMesh* Mesh = ISMC->GetStaticMesh();
+				if (!Mesh) continue;
+
+				const FBox LocalBox = Mesh->GetBounds().GetBox();
+
+				for (int32 i = 0; i < ISMC->GetInstanceCount(); ++i)
+				{
+					FTransform InstanceTransform;
+					if (!ISMC->GetInstanceTransform(i, InstanceTransform, true))
+						continue;
+
+					if (LocalBox.TransformBy(InstanceTransform).IsInsideOrOn(ClickLocation))
+					{
+						OutISMC = ISMC;
+						OutInstanceIndex = i;
+						return true;
+					}
+				}
+			}
+		}
+	}
+
+	// ====================================================================
+	// STRATEGY B — viewport ray + ray-sphere intersection
+	//
+	// ClickLocation was not set (or didn't match any instance).  Fall back
+	// to casting a ray through the cursor pixel using the engine's own
+	// deprojection pipeline (CalcSceneView → DeprojectFVector2D), then
+	// test each instance's world-space bounding sphere.
+	// ====================================================================
+
+	FViewport* Viewport = GEditor->GetActiveViewport();
+	if (!Viewport) return false;
+
+	const int32 MouseX = Viewport->GetMouseX();
+	const int32 MouseY = Viewport->GetMouseY();
+	if (MouseX < 0 || MouseY < 0) return false;
+
+	FViewportClient* ViewportClient = Viewport->GetClient();
+	if (!ViewportClient) return false;
+	FEditorViewportClient* EditorVC = static_cast<FEditorViewportClient*>(ViewportClient);
+	if (!EditorVC || EditorVC->GetViewportType() != LVT_Perspective) return false;
+
+	// Ray origin and direction via the engine's own deprojection path.
+	FVector WorldOrigin(ForceInit);
+	FVector WorldDir(ForceInit);
+
+	if (World->Scene)
+	{
+		FSceneViewFamilyContext ViewFamily(
+			FSceneViewFamily::ConstructionValues(
+				Viewport,
+				World->Scene,
+				EditorVC->EngineShowFlags
+			).SetRealtimeUpdate(true)
+		);
+		if (FSceneView* View = EditorVC->CalcSceneView(&ViewFamily))
+		{
+			View->DeprojectFVector2D(FVector2D((float)MouseX, (float)MouseY),
+				WorldOrigin, WorldDir);
+		}
+	}
+
+	// Fallback: manual ray if deprojection didn't produce a direction.
+	if (WorldDir.IsNearlyZero())
+	{
+		const int32 ViewSizeX = Viewport->GetSizeXY().X;
+		const int32 ViewSizeY = Viewport->GetSizeXY().Y;
+		if (ViewSizeX <= 0 || ViewSizeY <= 0) return false;
+
+		const float TanHalfFOV = FMath::Tan(FMath::DegreesToRadians(EditorVC->FOVAngle * 0.5f));
+		const float Aspect = (float)ViewSizeX / (float)ViewSizeY;
+
+		const float NDCX = ((float)MouseX / ViewSizeX) * 2.0f - 1.0f;
+		const float NDCY = 1.0f - ((float)MouseY / ViewSizeY) * 2.0f;
+
+		WorldDir = FRotationMatrix(EditorVC->GetViewRotation())
+			.TransformVector(FVector(1.0f, NDCX * TanHalfFOV * Aspect, NDCY * TanHalfFOV))
+			.GetSafeNormal();
+		WorldOrigin = EditorVC->GetViewLocation();
+	}
+
+	// Ray-sphere intersection (slab method).
+	int32 BestIndex = INDEX_NONE;
+	UInstancedStaticMeshComponent* BestISMC = nullptr;
+	float BestDistance = FLT_MAX;
+
+	for (UInstancedStaticMeshComponent* ISMC : ISMCs)
+	{
+		UStaticMesh* Mesh = ISMC->GetStaticMesh();
+		if (!Mesh) continue;
+
+		const FVector LocalOrigin = Mesh->GetBounds().Origin;
+		const float LocalRadius = Mesh->GetBounds().SphereRadius;
+
+		for (int32 i = 0; i < ISMC->GetInstanceCount(); ++i)
+		{
+			FTransform InstanceTransform;
+			if (!ISMC->GetInstanceTransform(i, InstanceTransform, true))
+				continue;
+
+			const FVector WorldCenter = InstanceTransform.TransformPosition(LocalOrigin);
+			const float WorldRadius = LocalRadius * InstanceTransform.GetMaximumAxisScale();
+
+			const FVector OC = WorldCenter - WorldOrigin;
+			const float Proj = FVector::DotProduct(OC, WorldDir);
+			const float DistSq = OC.SizeSquared() - Proj * Proj;
+			const float RadiusSq = WorldRadius * WorldRadius;
+
+			if (DistSq > RadiusSq)
+				continue;
+
+			const float HalfChord = FMath::Sqrt(RadiusSq - DistSq);
+			float T = Proj - HalfChord;
+			if (T < 0.0f) T = Proj + HalfChord;   // camera inside sphere
+			if (T < 0.0f) continue;                // behind camera
+
+			if (T < BestDistance)
+			{
+				BestDistance = T;
+				BestIndex = i;
+				BestISMC = ISMC;
+			}
+		}
+	}
+
+	if (BestIndex != INDEX_NONE)
+	{
+		OutISMC = BestISMC;
+		OutInstanceIndex = BestIndex;
+		return true;
+	}
+
+	return false;
+}
+
+// ----- BreakInstance --------------------------------------------------------
+
+void USeamlessInstancingEditorSubsystem::BreakInstance(
+	UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
+{
+	if (!ISMC || InstanceIndex < 0 || InstanceIndex >= ISMC->GetInstanceCount())
+	{
+		return;
+	}
+
+	AActor* Aggregate = ISMC->GetOwner();
+	UWorld* World = Aggregate ? Aggregate->GetWorld() : nullptr;
+	if (!World) return;
+
+	FTransform InstanceTransform;
+	if (!ISMC->GetInstanceTransform(InstanceIndex, InstanceTransform, /*bWorldSpace=*/true))
+	{
+		return;
+	}
+
+	UStaticMesh* Mesh = ISMC->GetStaticMesh();
+	if (!Mesh) return;
+
+	const TArray<FProperty*> RelevantProperties = GatherProperties();
+
+	GEditor->BeginTransaction(LOCTEXT("BreakInstance", "Break Instance"));
+
+	AStaticMeshActor* NewSMActor = World->SpawnActor<AStaticMeshActor>();
+	NewSMActor->SetActorTransform(InstanceTransform);
+	NewSMActor->Modify();
+
+	UStaticMeshComponent* NewSMC = NewSMActor->GetStaticMeshComponent();
+	NewSMC->SetStaticMesh(Mesh);
+
+	// Copy included properties from ISMC onto the new SMC.
+	for (FProperty* Prop : RelevantProperties)
+	{
+		if (!ShouldInclude(Prop))
+			continue;
+		Prop->CopyCompleteValue_InContainer(NewSMC, ISMC);
+	}
+
+	NewSMC->MarkRenderStateDirty();
+
+	// Remove the instance from the ISMC.
+	ISMC->RemoveInstance(InstanceIndex);
+
+	// Clean up empty ISMCs and, if needed, the aggregate itself.
+	if (ISMC->GetInstanceCount() == 0)
+	{
+		ISMC->DestroyComponent();
+
+		TArray<UInstancedStaticMeshComponent*> RemainingISMCs;
+		Aggregate->GetComponents(RemainingISMCs);
+		if (RemainingISMCs.IsEmpty())
+		{
+			World->DestroyActor(Aggregate);
+		}
+	}
+
+	GEditor->EndTransaction();
+
+	// Defer selection changes to the next tick so we don't modify the
+	// selection set from within a selection-change notification.
+	TWeakObjectPtr<AActor> WeakAggregate = Aggregate;
+	TWeakObjectPtr<AStaticMeshActor> WeakNewActor = NewSMActor;
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+		[WeakAggregate, WeakNewActor](float) -> bool
+		{
+			if (GEditor)
+			{
+				// Deselect the aggregate (it now has one fewer instance).
+				if (AActor* Agg = WeakAggregate.Get())
+				{
+					GEditor->SelectActor(Agg, /*bSelected=*/false, /*bNotify=*/true);
+				}
+				// Select the newly broken-out standalone actor.
+				if (AStaticMeshActor* NewActor = WeakNewActor.Get())
+				{
+					GEditor->SelectActor(NewActor, /*bSelected=*/true, /*bNotify=*/true);
+				}
+			}
+			return false;
+		}
+	));
 }
 
 #undef LOCTEXT_NAMESPACE
