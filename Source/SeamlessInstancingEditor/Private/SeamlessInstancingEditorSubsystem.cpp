@@ -12,10 +12,8 @@
 #include "WorldPartition/WorldPartition.h"
 #include "WorldPartition/WorldPartitionEditorSpatialHash.h"
 #include "Engine/StaticMeshActor.h"
-#include "EditorViewportClient.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "SceneView.h"
 
 #define LOCTEXT_NAMESPACE "SeamlessInstancing"
 
@@ -229,6 +227,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			ISMC->SetFlags(RF_Transactional);
 			ISMC->SetStaticMesh(InstanceKey.Mesh);
 			ISMC->SetupAttachment(AggregateActor->GetRootComponent());
+			ISMC->bHasPerInstanceHitProxies = true;
 			AggregateActor->AddInstanceComponent(ISMC);
 			ISMC->RegisterComponent();
 
@@ -242,6 +241,11 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 					continue;
 				Prop->CopyCompleteValue_InContainer(ISMC, SMC);
 			}
+
+			// Restore bHasPerInstanceHitProxies — the property copy above pulls
+			// the value from the source StaticMeshComponent (where it defaults to
+			// false), which would overwrite the true we set before RegisterComponent.
+			ISMC->bHasPerInstanceHitProxies = true;
 
 			// Stamp the source properties hash so future calls can find this ISMC.
 			ISMC->ComponentTags.Add(FName(*FString::Printf(TEXT("SrcHash_%u"), InstanceKey.PropertiesHash)));
@@ -494,168 +498,64 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 
 // ----- FindClickedInstance --------------------------------------------------
 
-bool USeamlessInstancingEditorSubsystem::FindClickedInstance(
-	AActor* Aggregate,
-	int32& OutInstanceIndex, UInstancedStaticMeshComponent*& OutISMC) const
+bool USeamlessInstancingEditorSubsystem::FindClickedInstance(AActor* Aggregate,	int32& OutInstanceIndex, UInstancedStaticMeshComponent*& OutISMC) const
 {
-	if (!GEditor || !Aggregate) return false;
+	if (!GEditor || !Aggregate)
+	{
+		return false;
+	}
 
-	TArray<UInstancedStaticMeshComponent*> ISMCs;
-	Aggregate->GetComponents(ISMCs);
-	if (ISMCs.IsEmpty()) return false;
+	FViewport* ActiveViewport = GEditor->GetActiveViewport();
+	if (!ActiveViewport)
+	{
+		return false;
+	}
 
-	UWorld* World = Aggregate->GetWorld();
-	if (!World) return false;
+	const int32 MouseX = ActiveViewport->GetMouseX();
+	const int32 MouseY = ActiveViewport->GetMouseY();
+	if (MouseX < 0 || MouseY < 0)
+	{
+		return false;
+	}
 
-	// ====================================================================
-	// STRATEGY A — GEditor->ClickLocation + bounding-box containment
+	// Use the engine's built-in hit-proxy system — the same mechanism that
+	// drives actor selection in the viewport.  When bHasPerInstanceHitProxies
+	// is enabled on the ISMC (set when the component is created), the engine
+	// generates one HInstancedStaticMeshInstance per instance, so we can
+	// identify the exact instance under the cursor without any ray math at all.
 	//
-	// GEditor->ClickLocation is set by the engine during viewport click
-	// processing to the world-space point on the mesh surface.  Since the
-	// bounding box of every instance encloses its mesh, the click point
-	// *must* fall inside exactly one box.  This is the simplest and most
-	// reliable method — no deprojection math at all.
-	// ====================================================================
-	{
-		const FVector ClickLocation = GEditor->ClickLocation;
-		if (!ClickLocation.IsNearlyZero())
-		{
-			for (UInstancedStaticMeshComponent* ISMC : ISMCs)
-			{
-				UStaticMesh* Mesh = ISMC->GetStaticMesh();
-				if (!Mesh) continue;
-
-				const FBox LocalBox = Mesh->GetBounds().GetBox();
-
-				for (int32 i = 0; i < ISMC->GetInstanceCount(); ++i)
-				{
-					FTransform InstanceTransform;
-					if (!ISMC->GetInstanceTransform(i, InstanceTransform, true))
-						continue;
-
-					if (LocalBox.TransformBy(InstanceTransform).IsInsideOrOn(ClickLocation))
-					{
-						OutISMC = ISMC;
-						OutInstanceIndex = i;
-						return true;
-					}
-				}
-			}
-		}
-	}
-
-	// ====================================================================
-	// STRATEGY B — viewport ray + ray-sphere intersection
+	// The hit-proxy buffer is valid during OnSelectionChanged because we are
+	// still inside the same editor tick / click-processing pipeline.
 	//
-	// ClickLocation was not set (or didn't match any instance).  Fall back
-	// to casting a ray through the cursor pixel using the engine's own
-	// deprojection pipeline (CalcSceneView → DeprojectFVector2D), then
-	// test each instance's world-space bounding sphere.
-	// ====================================================================
-
-	FViewport* Viewport = GEditor->GetActiveViewport();
-	if (!Viewport) return false;
-
-	const int32 MouseX = Viewport->GetMouseX();
-	const int32 MouseY = Viewport->GetMouseY();
-	if (MouseX < 0 || MouseY < 0) return false;
-
-	FViewportClient* ViewportClient = Viewport->GetClient();
-	if (!ViewportClient) return false;
-	FEditorViewportClient* EditorVC = static_cast<FEditorViewportClient*>(ViewportClient);
-	if (!EditorVC || EditorVC->GetViewportType() != LVT_Perspective) return false;
-
-	// Ray origin and direction via the engine's own deprojection path.
-	FVector WorldOrigin(ForceInit);
-	FVector WorldDir(ForceInit);
-
-	if (World->Scene)
+	// References:
+	//   - UInstancedStaticMeshComponent::CreateHitProxyData
+	//   - HInstancedStaticMeshInstance (& HInstancedStaticMeshInstance::GetElementHandle)
+	//   - FEditorViewportSelectability::HandleClick (UE engine source)
+	HHitProxy* HitProxy = ActiveViewport->GetHitProxy(MouseX, MouseY);
+	if (!HitProxy)
 	{
-		FSceneViewFamilyContext ViewFamily(
-			FSceneViewFamily::ConstructionValues(
-				Viewport,
-				World->Scene,
-				EditorVC->EngineShowFlags
-			).SetRealtimeUpdate(true)
-		);
-		if (FSceneView* View = EditorVC->CalcSceneView(&ViewFamily))
-		{
-			View->DeprojectFVector2D(FVector2D((float)MouseX, (float)MouseY),
-				WorldOrigin, WorldDir);
-		}
+		UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance: HitProxy is null at (%d,%d)"),
+			MouseX, MouseY);
+		return false;
 	}
 
-	// Fallback: manual ray if deprojection didn't produce a direction.
-	if (WorldDir.IsNearlyZero())
+	if (!HitProxy->IsA(HInstancedStaticMeshInstance::StaticGetType()))
 	{
-		const int32 ViewSizeX = Viewport->GetSizeXY().X;
-		const int32 ViewSizeY = Viewport->GetSizeXY().Y;
-		if (ViewSizeX <= 0 || ViewSizeY <= 0) return false;
-
-		const float TanHalfFOV = FMath::Tan(FMath::DegreesToRadians(EditorVC->FOVAngle * 0.5f));
-		const float Aspect = (float)ViewSizeX / (float)ViewSizeY;
-
-		const float NDCX = ((float)MouseX / ViewSizeX) * 2.0f - 1.0f;
-		const float NDCY = 1.0f - ((float)MouseY / ViewSizeY) * 2.0f;
-
-		WorldDir = FRotationMatrix(EditorVC->GetViewRotation())
-			.TransformVector(FVector(1.0f, NDCX * TanHalfFOV * Aspect, NDCY * TanHalfFOV))
-			.GetSafeNormal();
-		WorldOrigin = EditorVC->GetViewLocation();
+		UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance: unexpected HitProxy type \"%s\" at (%d,%d)"),
+			HitProxy->GetType()->GetName(),
+			MouseX, MouseY);
+		return false;
 	}
 
-	// Ray-sphere intersection (slab method).
-	int32 BestIndex = INDEX_NONE;
-	UInstancedStaticMeshComponent* BestISMC = nullptr;
-	float BestDistance = FLT_MAX;
-
-	for (UInstancedStaticMeshComponent* ISMC : ISMCs)
+	const HInstancedStaticMeshInstance* ISMHit = static_cast<const HInstancedStaticMeshInstance*>(HitProxy);
+	if (!ISMHit->Component || ISMHit->Component->GetOwner() != Aggregate)
 	{
-		UStaticMesh* Mesh = ISMC->GetStaticMesh();
-		if (!Mesh) continue;
-
-		const FVector LocalOrigin = Mesh->GetBounds().Origin;
-		const float LocalRadius = Mesh->GetBounds().SphereRadius;
-
-		for (int32 i = 0; i < ISMC->GetInstanceCount(); ++i)
-		{
-			FTransform InstanceTransform;
-			if (!ISMC->GetInstanceTransform(i, InstanceTransform, true))
-				continue;
-
-			const FVector WorldCenter = InstanceTransform.TransformPosition(LocalOrigin);
-			const float WorldRadius = LocalRadius * InstanceTransform.GetMaximumAxisScale();
-
-			const FVector OC = WorldCenter - WorldOrigin;
-			const float Proj = FVector::DotProduct(OC, WorldDir);
-			const float DistSq = OC.SizeSquared() - Proj * Proj;
-			const float RadiusSq = WorldRadius * WorldRadius;
-
-			if (DistSq > RadiusSq)
-				continue;
-
-			const float HalfChord = FMath::Sqrt(RadiusSq - DistSq);
-			float T = Proj - HalfChord;
-			if (T < 0.0f) T = Proj + HalfChord;   // camera inside sphere
-			if (T < 0.0f) continue;                // behind camera
-
-			if (T < BestDistance)
-			{
-				BestDistance = T;
-				BestIndex = i;
-				BestISMC = ISMC;
-			}
-		}
+		return false;
 	}
 
-	if (BestIndex != INDEX_NONE)
-	{
-		OutISMC = BestISMC;
-		OutInstanceIndex = BestIndex;
-		return true;
-	}
-
-	return false;
+	OutISMC = ISMHit->Component;
+	OutInstanceIndex = ISMHit->InstanceIndex;
+	return true;
 }
 
 // ----- BreakInstance --------------------------------------------------------
