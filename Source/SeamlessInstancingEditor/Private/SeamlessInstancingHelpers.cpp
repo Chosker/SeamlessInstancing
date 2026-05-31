@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "SeamlessInstancingHelpers.h"
 #include "SeamlessInstancingEditorModule.h"
@@ -286,6 +286,8 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
 	}
 
 	GEditor->EndTransaction();
+	// Refresh the World Outliner
+	GEditor->BroadcastLevelActorListChanged();
 
 	// Defer selection of the newly broken-out actor to the next tick
 	TWeakObjectPtr<AStaticMeshActor> WeakNewActor = NewSMActor;

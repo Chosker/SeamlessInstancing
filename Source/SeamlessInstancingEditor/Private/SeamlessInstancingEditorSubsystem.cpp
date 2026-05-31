@@ -266,6 +266,9 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 	}
 
 	GEditor->EndTransaction();
+
+	// Refresh the World Outliner
+	GEditor->BroadcastLevelActorListChanged();
 }
 
 void USeamlessInstancingEditorSubsystem::ConvertAllInstancedToSM()
@@ -369,6 +372,9 @@ void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActo
 	}
 
 	GEditor->EndTransaction();
+
+	// Refresh the World Outliner
+	GEditor->BroadcastLevelActorListChanged();
 }
 
 void USeamlessInstancingEditorSubsystem::SetSeamlessEnabled(bool bEnabled)
