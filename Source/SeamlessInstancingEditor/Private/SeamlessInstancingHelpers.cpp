@@ -26,26 +26,35 @@ bool IsActorOrComponentRef(const FProperty* Prop)
 bool ShouldInclude(const FProperty* Prop)
 {
 	if (Prop->HasAnyPropertyFlags(CPF_Transient | CPF_DuplicateTransient | CPF_EditorOnly))
+	{
 		return false;
+	}
 	if (Prop->IsA<FDelegateProperty>() || Prop->IsA<FMulticastDelegateProperty>()
 		|| Prop->IsA<FInterfaceProperty>())
+	{
 		return false;
+	}
 	if (Prop->IsA<FSetProperty>() || Prop->IsA<FMapProperty>())
+	{
 		return false;
+	}
 	if (IsActorOrComponentRef(Prop))
+	{
 		return false;
+	}
 	if (const FArrayProperty* ArrayProp = CastField<const FArrayProperty>(Prop))
 	{
 		if (IsActorOrComponentRef(ArrayProp->Inner))
+		{
 			return false;
+		}
 	}
 
-	// Skip administrative/internal properties that shouldn't be copied
-	// onto the destination ISMC.
+	// Skip properties that shouldn't be copied onto the destination ISMC.
 	static const TSet<FName> SkipNames = {
 		TEXT("CreationMethod"),              // would overwrite AddInstanceComponent's setting
 		TEXT("ComponentInstanceDataCache"),  // internal cache
-		TEXT("RelativeLocation"),            // transform — each instance has its own via AddInstance
+		TEXT("RelativeLocation"),            // transform
 		TEXT("RelativeRotation"),
 		TEXT("RelativeScale3D"),
 		TEXT("AttachSocketName"),            // attachment wiring
@@ -70,7 +79,9 @@ void WritePropertyForHash(FArchive& Ar, FProperty* Prop, void* Value)
 		for (TFieldIterator<FProperty> It(StructProp->Struct); It; ++It)
 		{
 			if (!ShouldInclude(*It))
+			{
 				continue;
+			}
 			void* MemberValue = It->ContainerPtrToValuePtr<uint8>(Value);
 			WritePropertyForHash(Ar, *It, MemberValue);
 		}
@@ -139,7 +150,9 @@ uint32 HashComponentProperties(UStaticMeshComponent* Component, const TArray<FPr
 	for (FProperty* Prop : Properties)
 	{
 		if (!ShouldInclude(Prop))
+		{
 			continue;
+		}
 		void* Value = Prop->ContainerPtrToValuePtr<uint8>(Component);
 		WritePropertyForHash(Ar, Prop, Value);
 	}
@@ -153,21 +166,24 @@ uint32 HashComponentProperties(UStaticMeshComponent* Component, const TArray<FPr
 
 int32 GetWorldPartitionCellSize(const UWorldPartitionEditorSpatialHash* SpatialHash)
 {
+	int32 DefaultWPCellSize = 25600;
 	if (!SpatialHash)
-		return 25600;
+	{
+		return DefaultWPCellSize;
+	}
 
-	FIntProperty* CellSizeProp = CastField<FIntProperty>(
-		UWorldPartitionEditorSpatialHash::StaticClass()->FindPropertyByName(TEXT("CellSize")));
+	FIntProperty* CellSizeProp = CastField<FIntProperty>(UWorldPartitionEditorSpatialHash::StaticClass()->FindPropertyByName(TEXT("CellSize")));
 	if (!CellSizeProp)
-		return 25600;
+	{
+		return DefaultWPCellSize;
+	}
 
 	return CellSizeProp->GetPropertyValue(CellSizeProp->ContainerPtrToValuePtr<int32>(SpatialHash));
 }
 
-AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers,
-	const TMap<FString, AActor*>& ExistingByLabel)
+AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel)
 {
-	// O(1) lookup via the pre-built map instead of an O(N) TActorIterator scan.
+	// Lookup via the pre-built map
 	if (const AActor* const* Found = ExistingByLabel.Find(Label))
 	{
 		return const_cast<AActor*>(*Found);
@@ -192,7 +208,7 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 		}
 	}
 
-	// Ensure every aggregate actor has a root component so we can attach ISMCs.
+	// Ensure every aggregate actor has a root component so we can attach ISMCs
 	if (!AggregateActor->GetRootComponent())
 	{
 		USceneComponent* Root = NewObject<USceneComponent>(AggregateActor);

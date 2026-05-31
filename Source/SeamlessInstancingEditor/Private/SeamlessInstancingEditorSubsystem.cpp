@@ -28,8 +28,7 @@ void USeamlessInstancingEditorSubsystem::Initialize(FSubsystemCollectionBase& Co
 	{
 		Collection.InitializeDependency<ULevelEditorSubsystem>();
 
-		// Cache the seamless-instancing toggle from config so we don't need
-		// to read GEditorPerProjectIni on every selection-change event.
+		// Cache the toggle from config
 		GConfig->GetBool(TEXT("SeamlessInstancing"), TEXT("bEnableSeamless"), bCachedSeamlessEnabled, GEditorPerProjectIni);
 
 		// Prime the previous-selection set from the current state.
@@ -44,8 +43,6 @@ void USeamlessInstancingEditorSubsystem::Initialize(FSubsystemCollectionBase& Co
 			}
 		}
 
-		// Attempt binding now — the ticker will retry if the selection set
-		// isn't ready yet (e.g. on initial editor startup).
 		TryBindSelectionEvents();
 	}
 
@@ -93,8 +90,14 @@ void USeamlessInstancingEditorSubsystem::ConvertAllSMToInstanced()
 	{
 		AStaticMeshActor* SMActor = *It;
 		UStaticMeshComponent* SMC = SMActor->GetStaticMeshComponent();
-		if (!SMC || !SMC->GetStaticMesh()) continue;
-		if (!SMActor->GetIsSpatiallyLoaded()) continue;
+		if (!SMC || !SMC->GetStaticMesh())
+		{
+			continue;
+		}
+		if (!SMActor->GetIsSpatiallyLoaded())
+		{
+			continue;
+		}
 
 		ActorsToConvert.Add(SMActor);
 	}
@@ -117,8 +120,6 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 	const TArray<FProperty*> RelevantProperties = GatherProperties();
 
-	// Single world scan to find any pre-existing aggregate actors so per-cell
-	// lookups are O(1) rather than a full TActorIterator scan per cell.
 	TMap<FString, AActor*> ExistingAggregateActors;
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
@@ -128,8 +129,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 		}
 	}
 
-	// Determine whether to split into partition cells and what cell size to use.
-	// The editor spatial hash's GetCellCoords uses the configured WP grid cell size.
+	// Check whether to split by WP cell and get cell size
 	bool bUseCellGrouping = false;
 	UWorldPartitionEditorSpatialHash* EditorSpatialHash = nullptr;
 	TMap<FCachedCellCoord, AActor*> CellToAggregate;
@@ -159,12 +159,10 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 						FString Label = FString::Printf(TEXT("SeamlessInstanceActor_%lld_%lld"), Cell.X, Cell.Y);
 						Found = FindOrCreateAggregateActor(World, Label, SMActor->GetDataLayerAssets(), ExistingAggregateActors);
 
-						// Center the aggregate on its WP tile so the actor origin isn't arbitrary.
-						Found->SetActorLocation(FVector(
-							double(Cell.X) * CellSize + CellSize * 0.5,
-							double(Cell.Y) * CellSize + CellSize * 0.5,
-							0.0
-						));
+						// Center aggregate on its WP tile
+						Found->SetActorLocation(FVector(double(Cell.X) * CellSize + CellSize * 0.5,
+														double(Cell.Y) * CellSize + CellSize * 0.5,
+														0.0));
 					}
 				}
 			}
@@ -187,7 +185,10 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 		const FCachedCellCoord CellKey = bUseCellGrouping ? ActorToCell[SMActor] : FCachedCellCoord{0, 0};
 		AActor* AggregateActor = CellToAggregate[CellKey];
 
-		if (SMActor == AggregateActor) continue;
+		if (SMActor == AggregateActor)
+		{
+			continue;
+		}
 
 		UStaticMeshComponent* SMC = SMActor->GetStaticMeshComponent();
 		SMActor->Modify();
@@ -212,8 +213,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			const FName IncomingHashTag = FName(*FString::Printf(TEXT("SrcHash_%u"), InstanceKey.PropertiesHash));
 			for (UInstancedStaticMeshComponent* Existing : ExistingISMCs)
 			{
-				if (Existing->GetStaticMesh() == InstanceKey.Mesh
-					&& Existing->ComponentTags.Contains(IncomingHashTag))
+				if (Existing->GetStaticMesh() == InstanceKey.Mesh && Existing->ComponentTags.Contains(IncomingHashTag))
 				{
 					ISMC = Existing;
 					break;
@@ -232,13 +232,14 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			ISMC->RegisterComponent();
 
 			// Copy all included properties from source SMC onto the new ISMC.
-			// This must happen BEFORE stamping SrcHash — CopyCompleteValue_InContainer
 			// overwrites ComponentTags (which is an included property), which would
 			// erase the tag and prevent future lookups from finding this ISMC.
 			for (FProperty* Prop : RelevantProperties)
 			{
 				if (!ShouldInclude(Prop))
+				{
 					continue;
+				}
 				Prop->CopyCompleteValue_InContainer(ISMC, SMC);
 			}
 
@@ -247,7 +248,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			// false), which would overwrite the true we set before RegisterComponent.
 			ISMC->bHasPerInstanceHitProxies = true;
 
-			// Stamp the source properties hash so future calls can find this ISMC.
+			// Stamp the source properties hash so future calls can find this ISMC
 			ISMC->ComponentTags.Add(FName(*FString::Printf(TEXT("SrcHash_%u"), InstanceKey.PropertiesHash)));
 		}
 
@@ -266,20 +267,27 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 void USeamlessInstancingEditorSubsystem::ConvertAllInstancedToSM()
 {
 	UWorld* World = GEditor->GetEditorWorldContext().World();
-	if (!World) return;
+	if (!World)
+	{
+		return;
+	}
 
 	TArray<AActor*> AggregatesToConvert;
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		if (!It->Tags.Contains(TEXT("SeamlessInstanceActor")))
+		{
 			continue;
+		}
 
 		AActor* Aggregate = *It;
 		TArray<UInstancedStaticMeshComponent*> ISMCs;
 		Aggregate->GetComponents(ISMCs);
 
 		if (ISMCs.IsEmpty())
+		{
 			continue;
+		}
 
 		AggregatesToConvert.Add(Aggregate);
 	}
@@ -295,7 +303,10 @@ void USeamlessInstancingEditorSubsystem::ConvertAllInstancedToSM()
 void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActor*>& AggregatesToConvert)
 {
 	UWorld* World = GEditor->GetEditorWorldContext().World();
-	if (!World) return;
+	if (!World)
+	{
+		return;
+	}
 
 	const TArray<FProperty*> RelevantProperties = GatherProperties();
 
@@ -310,7 +321,10 @@ void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActo
 		for (UInstancedStaticMeshComponent* ISMC : ISMCs)
 		{
 			UStaticMesh* Mesh = ISMC->GetStaticMesh();
-			if (!Mesh) continue;
+			if (!Mesh)
+			{
+				continue;
+			}
 
 			const int32 NumInstances = ISMC->GetInstanceCount();
 
@@ -318,7 +332,9 @@ void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActo
 			{
 				FTransform InstanceTransform;
 				if (!ISMC->GetInstanceTransform(i, InstanceTransform, /*bWorldSpace=*/true))
+				{
 					continue;
+				}
 
 				AStaticMeshActor* SMActor = World->SpawnActor<AStaticMeshActor>();
 				SMActor->SetActorTransform(InstanceTransform);
@@ -326,11 +342,13 @@ void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActo
 				NewSMC->SetStaticMesh(Mesh);
 				SMActor->Modify();
 
-				// Copy included properties from the ISMC onto the new SMC.
+				// Copy included properties from the ISMC onto the new SMC
 				for (FProperty* Prop : RelevantProperties)
 				{
 					if (!ShouldInclude(Prop))
+					{
 						continue;
+					}
 					Prop->CopyCompleteValue_InContainer(NewSMC, ISMC);
 				}
 
@@ -383,12 +401,10 @@ void USeamlessInstancingEditorSubsystem::TryBindSelectionEvents()
 		}
 	}
 
-	// Selection set not ready yet — retry via ticker.
+	// Selection set not ready yet, retry via ticker
 	if (!TickerHandle.IsValid())
 	{
-		TickerHandle = FTSTicker::GetCoreTicker().AddTicker(
-			FTickerDelegate::CreateUObject(this, &USeamlessInstancingEditorSubsystem::TickBindRetry),
-			0.5f);
+		TickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &USeamlessInstancingEditorSubsystem::TickBindRetry), 0.5f);
 	}
 }
 
@@ -412,7 +428,7 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 		return;
 	}
 
-	// Snapshot the current selection set.
+	// Snapshot the current selection set
 	TSet<TWeakObjectPtr<AActor>> CurrentSelection;
 	if (SelectionSet)
 	{
@@ -426,7 +442,7 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 		});
 	}
 
-	// Find actors that were selected before but aren't anymore (SM -> ISM).
+	// Find actors that were selected before but aren't anymore (SM -> ISM)
 	TArray<AStaticMeshActor*> ActorsToConvert;
 	for (const TWeakObjectPtr<AActor>& PrevActor : PreviousSelectedActors)
 	{
@@ -449,10 +465,7 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 		}
 	}
 
-	// Find newly selected aggregates (ISM -> SM).
-	// We compare against PreviousSelectedActors to only react when an aggregate
-	// was NOT selected before the most recent selection change (i.e. it was just
-	// clicked/selected in the viewport or outliner).
+	// Find newly selected aggregates (ISM -> SM)
 	TArray<AActor*> NewlySelectedAggregates;
 	for (const TWeakObjectPtr<AActor>& CurrentActor : CurrentSelection)
 	{
@@ -464,8 +477,7 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 		}
 	}
 
-	// Update tracking before converting so re-entrant events from DestroyActor
-	// see a consistent state.
+	// Update tracking before converting
 	PreviousSelectedActors = CurrentSelection;
 
 	if (ActorsToConvert.IsEmpty() && NewlySelectedAggregates.IsEmpty())
@@ -475,13 +487,13 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 
 	TGuardValue<bool> Guard(bIsConverting, true);
 
-	// Convert deselected SM actors to ISM instances (existing direction).
+	// Convert deselected SM actors to ISM instances
 	if (!ActorsToConvert.IsEmpty())
 	{
 		ConvertSMToInstanced(ActorsToConvert);
 	}
 
-	// Convert clicked ISM instances back to SM actors (reverse direction).
+	// Convert clicked ISM instances back to SM actors
 	if (!NewlySelectedAggregates.IsEmpty())
 	{
 		for (AActor* Aggregate : NewlySelectedAggregates)
@@ -518,32 +530,17 @@ bool USeamlessInstancingEditorSubsystem::FindClickedInstance(AActor* Aggregate,	
 		return false;
 	}
 
-	// Use the engine's built-in hit-proxy system — the same mechanism that
-	// drives actor selection in the viewport.  When bHasPerInstanceHitProxies
-	// is enabled on the ISMC (set when the component is created), the engine
-	// generates one HInstancedStaticMeshInstance per instance, so we can
-	// identify the exact instance under the cursor without any ray math at all.
-	//
-	// The hit-proxy buffer is valid during OnSelectionChanged because we are
-	// still inside the same editor tick / click-processing pipeline.
-	//
-	// References:
-	//   - UInstancedStaticMeshComponent::CreateHitProxyData
-	//   - HInstancedStaticMeshInstance (& HInstancedStaticMeshInstance::GetElementHandle)
-	//   - FEditorViewportSelectability::HandleClick (UE engine source)
+	// Use the engine's built-in hit-proxy system
 	HHitProxy* HitProxy = ActiveViewport->GetHitProxy(MouseX, MouseY);
 	if (!HitProxy)
 	{
-		UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance: HitProxy is null at (%d,%d)"),
-			MouseX, MouseY);
+		UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance: HitProxy is null at (%d,%d)"), MouseX, MouseY);
 		return false;
 	}
 
 	if (!HitProxy->IsA(HInstancedStaticMeshInstance::StaticGetType()))
 	{
-		UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance: unexpected HitProxy type \"%s\" at (%d,%d)"),
-			HitProxy->GetType()->GetName(),
-			MouseX, MouseY);
+		UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance: unexpected HitProxy type \"%s\" at (%d,%d)"), HitProxy->GetType()->GetName(), MouseX, MouseY);
 		return false;
 	}
 
@@ -560,8 +557,7 @@ bool USeamlessInstancingEditorSubsystem::FindClickedInstance(AActor* Aggregate,	
 
 // ----- BreakInstance --------------------------------------------------------
 
-void USeamlessInstancingEditorSubsystem::BreakInstance(
-	UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
+void USeamlessInstancingEditorSubsystem::BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
 {
 	if (!ISMC || InstanceIndex < 0 || InstanceIndex >= ISMC->GetInstanceCount())
 	{
@@ -570,7 +566,10 @@ void USeamlessInstancingEditorSubsystem::BreakInstance(
 
 	AActor* Aggregate = ISMC->GetOwner();
 	UWorld* World = Aggregate ? Aggregate->GetWorld() : nullptr;
-	if (!World) return;
+	if (!World)
+	{
+		return;
+	}
 
 	FTransform InstanceTransform;
 	if (!ISMC->GetInstanceTransform(InstanceIndex, InstanceTransform, /*bWorldSpace=*/true))
@@ -579,14 +578,14 @@ void USeamlessInstancingEditorSubsystem::BreakInstance(
 	}
 
 	UStaticMesh* Mesh = ISMC->GetStaticMesh();
-	if (!Mesh) return;
+	if (!Mesh)
+	{
+		return;
+	}
 
 	const TArray<FProperty*> RelevantProperties = GatherProperties();
 
-	// Deselect the aggregate before breaking the instance so the viewport
-	// never renders the full aggregate outline while we're inside this
-	// transaction.  The re-entrant OnSelectionChanged call is guarded by
-	// bIsConverting (set in OnSelectionChanged before calling us).
+	// Deselect the aggregate before breaking the instance to avoid rendering its outline
 	if (GEditor)
 	{
 		GEditor->SelectActor(Aggregate, /*bSelected=*/false, /*bNotify=*/true);
@@ -601,20 +600,22 @@ void USeamlessInstancingEditorSubsystem::BreakInstance(
 	UStaticMeshComponent* NewSMC = NewSMActor->GetStaticMeshComponent();
 	NewSMC->SetStaticMesh(Mesh);
 
-	// Copy included properties from ISMC onto the new SMC.
+	// Copy included properties from ISMC onto the new SMC
 	for (FProperty* Prop : RelevantProperties)
 	{
 		if (!ShouldInclude(Prop))
+		{
 			continue;
+		}
 		Prop->CopyCompleteValue_InContainer(NewSMC, ISMC);
 	}
 
 	NewSMC->MarkRenderStateDirty();
 
-	// Remove the instance from the ISMC.
+	// Remove the instance from the ISMC
 	ISMC->RemoveInstance(InstanceIndex);
 
-	// Clean up empty ISMCs and, if needed, the aggregate itself.
+	// Clean up empty ISMCs and if needed, the aggregate itself
 	if (ISMC->GetInstanceCount() == 0)
 	{
 		ISMC->DestroyComponent();
@@ -629,8 +630,7 @@ void USeamlessInstancingEditorSubsystem::BreakInstance(
 
 	GEditor->EndTransaction();
 
-	// Defer selection of the newly broken-out actor to the next tick so we
-	// don't modify the selection set from within a selection-change notification.
+	// Defer selection of the newly broken-out actor to the next tick
 	TWeakObjectPtr<AStaticMeshActor> WeakNewActor = NewSMActor;
 	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
 		[WeakNewActor](float) -> bool
