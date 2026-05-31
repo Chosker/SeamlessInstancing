@@ -51,7 +51,4 @@ private:
 	/** Cached value of bEnableSeamless from GEditorPerProjectIni */
 	bool bCachedSeamlessEnabled = false;
 
-	bool FindClickedInstance(AActor* Aggregate,	int32& OutInstanceIndex, UInstancedStaticMeshComponent*& OutISMC) const;
-
-	void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex);
 };

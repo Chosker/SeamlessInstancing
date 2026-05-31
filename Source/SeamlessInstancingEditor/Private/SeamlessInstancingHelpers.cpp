@@ -1,15 +1,21 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "SeamlessInstancingHelpers.h"
+#include "SeamlessInstancingEditorModule.h"
 
 #include "Serialization/BufferArchive.h"
 #include "Misc/Crc.h"
 #include "Engine/StaticMesh.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "Engine/StaticMeshActor.h"
 #include "WorldPartition/WorldPartition.h"
 #include "WorldPartition/WorldPartitionEditorSpatialHash.h"
 #include "WorldPartition/DataLayer/DataLayerInstance.h"
 #include "WorldPartition/DataLayer/DataLayerManager.h"
+#include "Editor.h"
+
+#define LOCTEXT_NAMESPACE "SeamlessInstancing"
 
 // ============================================================================
 // Property helpers
@@ -160,6 +166,144 @@ uint32 HashComponentProperties(UStaticMeshComponent* Component, const TArray<FPr
 	return FCrc::MemCrc32(Ar.GetData(), Ar.Num());
 }
 
+// ----- FindClickedInstance --------------------------------------------------
+
+bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedStaticMeshComponent*& OutISMC)
+{
+	if (!GEditor || !Aggregate)
+	{
+		return false;
+	}
+
+	FViewport* ActiveViewport = GEditor->GetActiveViewport();
+	if (!ActiveViewport)
+	{
+		return false;
+	}
+
+	const int32 MouseX = ActiveViewport->GetMouseX();
+	const int32 MouseY = ActiveViewport->GetMouseY();
+	if (MouseX < 0 || MouseY < 0)
+	{
+		return false;
+	}
+
+	HHitProxy* HitProxy = ActiveViewport->GetHitProxy(MouseX, MouseY);
+	if (!HitProxy)
+	{
+		UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance: HitProxy is null at (%d,%d)"), MouseX, MouseY);
+		return false;
+	}
+
+	if (!HitProxy->IsA(HInstancedStaticMeshInstance::StaticGetType()))
+	{
+		UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance: unexpected HitProxy type \"%s\" at (%d,%d)"), HitProxy->GetType()->GetName(), MouseX, MouseY);
+		return false;
+	}
+
+	const HInstancedStaticMeshInstance* ISMHit = static_cast<const HInstancedStaticMeshInstance*>(HitProxy);
+	if (!ISMHit->Component || ISMHit->Component->GetOwner() != Aggregate)
+	{
+		return false;
+	}
+
+	OutISMC = ISMHit->Component;
+	OutInstanceIndex = ISMHit->InstanceIndex;
+	return true;
+}
+
+// ----- BreakInstance --------------------------------------------------------
+
+void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
+{
+	if (!ISMC || InstanceIndex < 0 || InstanceIndex >= ISMC->GetInstanceCount())
+	{
+		return;
+	}
+
+	AActor* Aggregate = ISMC->GetOwner();
+	UWorld* World = Aggregate ? Aggregate->GetWorld() : nullptr;
+	if (!World)
+	{
+		return;
+	}
+
+	FTransform InstanceTransform;
+	if (!ISMC->GetInstanceTransform(InstanceIndex, InstanceTransform, /*bWorldSpace=*/true))
+	{
+		return;
+	}
+
+	UStaticMesh* Mesh = ISMC->GetStaticMesh();
+	if (!Mesh)
+	{
+		return;
+	}
+
+	const TArray<FProperty*> RelevantProperties = GatherProperties();
+
+	// Deselect the aggregate before breaking the instance to avoid rendering its outline
+	if (GEditor)
+	{
+		GEditor->SelectActor(Aggregate, /*bSelected=*/false, /*bNotify=*/true);
+	}
+
+	GEditor->BeginTransaction(LOCTEXT("BreakInstance", "Break Instance"));
+
+	AStaticMeshActor* NewSMActor = World->SpawnActor<AStaticMeshActor>();
+	NewSMActor->SetActorTransform(InstanceTransform);
+	NewSMActor->Modify();
+
+	UStaticMeshComponent* NewSMC = NewSMActor->GetStaticMeshComponent();
+	NewSMC->SetStaticMesh(Mesh);
+
+	// Copy included properties from ISMC onto the new SMC
+	for (FProperty* Prop : RelevantProperties)
+	{
+		if (!ShouldInclude(Prop))
+		{
+			continue;
+		}
+		Prop->CopyCompleteValue_InContainer(NewSMC, ISMC);
+	}
+
+	NewSMC->MarkRenderStateDirty();
+
+	// Remove the instance from the ISMC
+	ISMC->RemoveInstance(InstanceIndex);
+
+	// Clean up empty ISMCs and if needed, the aggregate itself
+	if (ISMC->GetInstanceCount() == 0)
+	{
+		ISMC->DestroyComponent();
+
+		TArray<UInstancedStaticMeshComponent*> RemainingISMCs;
+		Aggregate->GetComponents(RemainingISMCs);
+		if (RemainingISMCs.IsEmpty())
+		{
+			World->DestroyActor(Aggregate);
+		}
+	}
+
+	GEditor->EndTransaction();
+
+	// Defer selection of the newly broken-out actor to the next tick
+	TWeakObjectPtr<AStaticMeshActor> WeakNewActor = NewSMActor;
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+		[WeakNewActor](float) -> bool
+		{
+			if (GEditor)
+			{
+				if (AStaticMeshActor* NewActor = WeakNewActor.Get())
+				{
+					GEditor->SelectActor(NewActor, /*bSelected=*/true, /*bNotify=*/true);
+				}
+			}
+			return false;
+		}
+	));
+}
+
 // ============================================================================
 // World Partition helpers
 // ============================================================================
@@ -219,3 +363,5 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 
 	return AggregateActor;
 }
+
+#undef LOCTEXT_NAMESPACE

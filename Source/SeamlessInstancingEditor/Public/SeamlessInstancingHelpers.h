@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 
 class AActor;
+class UInstancedStaticMeshComponent;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UWorld;
@@ -46,6 +47,12 @@ TArray<FProperty*> GatherProperties();
 
 /** Hash all data property values on a component */
 uint32 HashComponentProperties(UStaticMeshComponent* Component, const TArray<FProperty*>& Properties);
+
+/** Find the ISM instance under the cursor via viewport hit-proxy system */
+bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedStaticMeshComponent*& OutISMC);
+
+/** Convert a single ISM instance to a StaticMeshActor and select it */
+void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex);
 
 // ----- World Partition helpers -------------------------------------------
 
