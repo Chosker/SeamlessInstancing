@@ -219,10 +219,8 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 		if (!ISMC)
 		{
-			ISMC = NewObject<UInstancedStaticMeshComponent>(AggregateActor);
-			ISMC->SetFlags(RF_Transactional);
-			//const FName ISMCName = *FString::Printf(TEXT("ISMC_%s"), *InstanceKey.Mesh->GetName());
-			//ISMC = NewObject<UInstancedStaticMeshComponent>(AggregateActor, ISMCName, RF_Transactional);
+			const FName ISMCName = *FString::Printf(TEXT("ISMC_%s_%u"), *InstanceKey.Mesh->GetName(), InstanceKey.PropertiesHash);
+			ISMC = NewObject<UInstancedStaticMeshComponent>(AggregateActor, ISMCName, RF_Transactional);
 			ISMC->SetStaticMesh(InstanceKey.Mesh);
 			ISMC->SetupAttachment(AggregateActor->GetRootComponent());
 			ISMC->bHasPerInstanceHitProxies = true;
