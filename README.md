@@ -11,7 +11,7 @@ Just install, enable Seamless Instancing from the toolbar and forget it exists.
 Enjoy lightweight levels with instancing, with the proper UX of manipulating regular actors. Seamlessly.
 
 ### Supported Features
-- Processes only StaticMeshComponents of StaticMeshActors with Mobility is set to Static and SpatiallyLoaded set to True
+- Processes only StaticMeshComponents of StaticMeshActors with Mobility is set to Static, SpatiallyLoaded set to True, and not HiddenInEditor
 - Maintains most StaticMeshComponents' properties (i.e. Material override, collision options, cast shadows, etc) by making different Instanced Components when a different property is needed
 - Supports World Partition levels (instances are grouped per WP tile)
 - Works on perspective and ortho viewports
