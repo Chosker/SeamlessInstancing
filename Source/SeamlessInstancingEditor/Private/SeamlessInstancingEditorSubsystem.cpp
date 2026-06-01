@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "SeamlessInstancingEditorSubsystem.h"
 #include "SeamlessInstancingEditorModule.h"
@@ -99,6 +99,10 @@ void USeamlessInstancingEditorSubsystem::ConvertAllSMToInstanced()
 			continue;
 		}
 		if (!SMActor->GetIsSpatiallyLoaded())
+		{
+			continue;
+		}
+		if (SMActor->IsHiddenEd())
 		{
 			continue;
 		}
@@ -455,6 +459,10 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 		}
 		if (AStaticMeshActor* SMActor = Cast<AStaticMeshActor>(Actor))
 		{
+			if (SMActor->IsHiddenEd())
+			{
+				continue;
+			}
 			UStaticMeshComponent* SMC = SMActor->GetStaticMeshComponent();
 			if (SMC && SMC->GetStaticMesh() && SMC->Mobility == EComponentMobility::Static && SMActor->GetIsSpatiallyLoaded())
 			{
