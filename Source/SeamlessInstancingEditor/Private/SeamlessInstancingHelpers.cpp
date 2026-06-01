@@ -64,8 +64,10 @@ bool ShouldInclude(const FProperty* Prop)
 		TEXT("RelativeRotation"),
 		TEXT("RelativeScale3D"),
 		TEXT("AttachSocketName"),            // attachment wiring
-		TEXT("ComponentTags"),               // labels only — two identical components with different
-		                                     // tags should still merge into the same ISM group
+		TEXT("ComponentTags"),               // labels only; the SrcHash_* tag we stamp on the ISMC
+		                                     // lives here and would cause hash mismatches if included,
+		                                     // and two identical components with different tags should
+		                                     // still merge into the same ISM group
 	};
 	if (SkipNames.Contains(Prop->GetFName()))
 	{
