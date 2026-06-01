@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "SeamlessInstancingEditorSubsystem.h"
 #include "SeamlessInstancingEditorModule.h"
@@ -14,6 +14,8 @@
 #include "Engine/StaticMeshActor.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "UObject/MetaData.h"
+#include "UObject/Package.h"
 
 #define LOCTEXT_NAMESPACE "SeamlessInstancing"
 
@@ -201,23 +203,17 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 		InstanceKey.Mesh = SMC->GetStaticMesh();
 		InstanceKey.PropertiesHash = HashComponentProperties(SMC, RelevantProperties);
 
-		// Scan the aggregate for an existing ISMC with matching mesh and properties.
-		// This handles the case where ConvertSMToInstanced is called repeatedly
-		// (e.g. one actor at a time via OnSelectionChanged) — previously created
-		// ISMCs persist on the aggregate between calls.
-		//
-		// We use ComponentTags to store the source SMC's property hash because
-		// CopyCompleteValue_InContainer does not produce byte-identical values
-		// on the ISMC — recomputing the hash from the existing ISMC would
-		// never match the incoming SMC's hash.
+		// Scan the aggregate for an existing ISMC with matching mesh and properties and stash the property hash in package-level FMetaData
 		UInstancedStaticMeshComponent* ISMC = nullptr;
 		{
 			TArray<UInstancedStaticMeshComponent*> ExistingISMCs;
 			AggregateActor->GetComponents(ExistingISMCs);
-			const FName IncomingHashTag = FName(*FString::Printf(TEXT("SrcHash_%u"), InstanceKey.PropertiesHash));
+			FMetaData& MetaData = AggregateActor->GetPackage()->GetMetaData();
+			const FString IncomingHashStr = FString::Printf(TEXT("%u"), InstanceKey.PropertiesHash);
 			for (UInstancedStaticMeshComponent* Existing : ExistingISMCs)
 			{
-				if (Existing->GetStaticMesh() == InstanceKey.Mesh && Existing->ComponentTags.Contains(IncomingHashTag))
+				const FString* FoundHash = MetaData.FindValue(Existing, TEXT("SrcHash"));
+				if (Existing->GetStaticMesh() == InstanceKey.Mesh && FoundHash && *FoundHash == IncomingHashStr)
 				{
 					ISMC = Existing;
 					break;
@@ -235,9 +231,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			AggregateActor->AddInstanceComponent(ISMC);
 			ISMC->RegisterComponent();
 
-			// Copy all included properties from source SMC onto the new ISMC.
-			// overwrites ComponentTags (which is an included property), which would
-			// erase the tag and prevent future lookups from finding this ISMC.
+			// Copy all included properties from source SMC onto the new ISMC
 			for (FProperty* Prop : RelevantProperties)
 			{
 				if (!ShouldInclude(Prop))
@@ -247,13 +241,13 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 				Prop->CopyCompleteValue_InContainer(ISMC, SMC);
 			}
 
-			// Restore bHasPerInstanceHitProxies — the property copy above pulls
-			// the value from the source StaticMeshComponent (where it defaults to
-			// false), which would overwrite the true we set before RegisterComponent.
+			// Restore bHasPerInstanceHitProxies as it has been overwritten
 			ISMC->bHasPerInstanceHitProxies = true;
 
-			// Stamp the source properties hash so future calls can find this ISMC
-			ISMC->ComponentTags.Add(FName(*FString::Printf(TEXT("SrcHash_%u"), InstanceKey.PropertiesHash)));
+			// Stash the source properties hash in package-level metadata so future
+			// calls can find this ISMC without polluting ComponentTags.
+			FMetaData& MetaData = AggregateActor->GetPackage()->GetMetaData();
+			MetaData.SetValue(ISMC, TEXT("SrcHash"), *FString::Printf(TEXT("%u"), InstanceKey.PropertiesHash));
 		}
 
 		ISMC->AddInstance(SMActor->GetTransform(), /*bWorldSpace=*/true);
@@ -519,3 +513,8 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 }
 
 #undef LOCTEXT_NAMESPACE
+
+
+
+
+
