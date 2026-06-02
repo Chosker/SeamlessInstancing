@@ -166,7 +166,9 @@ uint32 HashComponentProperties(UStaticMeshComponent* Component, const TArray<FPr
 	return FCrc::MemCrc32(Ar.GetData(), Ar.Num());
 }
 
-// ----- FindClickedInstance --------------------------------------------------
+// ============================================================================
+// Selection helpers
+// ============================================================================
 
 bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedStaticMeshComponent*& OutISMC)
 {
@@ -211,8 +213,6 @@ bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedS
 	OutInstanceIndex = ISMHit->InstanceIndex;
 	return true;
 }
-
-// ----- BreakInstance --------------------------------------------------------
 
 void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
 {
@@ -304,6 +304,39 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
 			return false;
 		}
 	));
+}
+
+TArray<TPair<UInstancedStaticMeshComponent*, int32>> FindSelectionInstances(FViewport* Viewport, AActor* Aggregate, const FIntRect& SelectionRect)
+{
+	TArray<TPair<UInstancedStaticMeshComponent*, int32>> Out;
+	if (!Viewport || !Aggregate)
+	{
+		return Out;
+	}
+	if (SelectionRect.Width() <= 0 || SelectionRect.Height() <= 0)
+	{
+		return Out;
+	}
+
+	// Per-instance hit proxies carry their own screen-space bounds, so the rect test
+	// matches what the user actually sees as "touched by the box" — far more accurate
+	// than projecting each instance's pivot through a scene view.
+	Viewport->EnumerateHitProxiesInRect(SelectionRect,
+		[&Out, Aggregate](HHitProxy* HitProxy) -> bool
+		{
+			if (HitProxy && HitProxy->IsA(HInstancedStaticMeshInstance::StaticGetType()))
+			{
+				const HInstancedStaticMeshInstance* ISMH = static_cast<const HInstancedStaticMeshInstance*>(HitProxy);
+				UInstancedStaticMeshComponent* ISMC = ISMH ? ISMH->Component : nullptr;
+				if (ISMC && ISMC->GetOwner() == Aggregate)
+				{
+					Out.Emplace(ISMC, ISMH->InstanceIndex);
+				}
+			}
+			return true; // keep iterating
+		});
+
+	return Out;
 }
 
 // ============================================================================

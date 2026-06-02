@@ -40,7 +40,12 @@ private:
 	/** Ticker callback. Retries binding until the selection set becomes available */
 	bool TickBindRetry(float DeltaTime);
 
+	/** Ticker callback. Monitors MouseDeltaTracker to capture box-selection rect start. */
+	bool TickSelectionCheck(float DeltaTime);
+
 	FTSTicker::FDelegateHandle TickerHandle;
+
+	FTSTicker::FDelegateHandle SelectionTickerHandle;
 
 	bool bIsConverting = false;
 	bool bSelectionEventsBound = false;
@@ -50,5 +55,8 @@ private:
 
 	/** Cached value of bEnableSeamless from GEditorPerProjectIni */
 	bool bCachedSeamlessEnabled = false;
+
+	/** Cached selection-rect start captured in TickSelectionCheck, (-1,-1) when invalid */
+	FIntPoint CachedSelStart = FIntPoint(-1, -1);
 
 };

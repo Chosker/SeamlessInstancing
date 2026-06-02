@@ -7,6 +7,7 @@
 #include "Editor.h"
 #include "EngineUtils.h"
 #include "Selection.h"
+#include "MouseDeltaTracker.h"
 #include "LevelEditorSubsystem.h"
 #include "Elements/Framework/TypedElementSelectionSet.h"
 #include "WorldPartition/WorldPartition.h"
@@ -46,6 +47,9 @@ void USeamlessInstancingEditorSubsystem::Initialize(FSubsystemCollectionBase& Co
 		TryBindSelectionEvents();
 	}
 
+	// Start continuous ticker for detecting box-selection drags
+	SelectionTickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &USeamlessInstancingEditorSubsystem::TickSelectionCheck));
+
 	UE_LOG(LogSeamlessInstancing, Log, TEXT("SeamlessInstancingEditorSubsystem initialized."));
 }
 
@@ -53,6 +57,9 @@ void USeamlessInstancingEditorSubsystem::Deinitialize()
 {
 	FTSTicker::GetCoreTicker().RemoveTicker(TickerHandle);
 	TickerHandle.Reset();
+
+	FTSTicker::GetCoreTicker().RemoveTicker(SelectionTickerHandle);
+	SelectionTickerHandle.Reset();
 
 	if (GEditor)
 	{
@@ -416,6 +423,71 @@ bool USeamlessInstancingEditorSubsystem::TickBindRetry(float DeltaTime)
 	return !bSelectionEventsBound;
 }
 
+
+// ----- Tick-based rect capture ------------------------------------------------
+// why return bool?
+bool USeamlessInstancingEditorSubsystem::TickSelectionCheck(float DeltaTime)
+{
+	if (!IsSeamlessEnabled())
+	{
+		return true;
+	}
+
+	if (!GEditor)
+	{
+		return true;
+	}
+
+	FViewport* ActiveViewport = GEditor->GetActiveViewport();
+	if (!ActiveViewport)
+	{
+		return true;
+	}
+
+	/*FViewportClient* VC = ActiveViewport->GetClient();
+	if (!VC)
+	{
+		return true;
+	}*/
+
+	//FEditorViewportClient* EditorVC = static_cast<FEditorViewportClient*>(VC);
+	FEditorViewportClient* EditorVC = static_cast<FEditorViewportClient*>(ActiveViewport->GetClient());
+	if (!EditorVC)
+	{
+		return true;
+	}
+
+	FMouseDeltaTracker* MDT = EditorVC->GetMouseDeltaTracker();
+	if (!MDT)
+	{
+		return true;
+	}
+
+	// No drag in progress — skip
+	// "a cancelled drag (mouse-up outside the viewport, escape, etc.) won't fire OnSelectionChanged, so CachedSelStart will hold the last drag's start pixel coords.
+	// The next time anything does trigger a selection change (even a single click on an aggregate), the box-select branch will see SelStart.X >= 0 and treat it as a real
+	// box - select rect, building the rect from the stale start to the current mouse position — which could be a giant rect that breaks a bunch of unintended instances."
+	// TODO: check if this is actually a problem: pressing Esc doesnt cancel, and other cases seem to fire OnSelectionChanged
+	if (!MDT->UsingDragTool())
+	{
+		return true;
+	}
+
+	// Already captured for this drag operation
+	if (CachedSelStart.X >= 0 && CachedSelStart.Y >= 0)
+	{
+		return true;
+	}
+
+	// Drag tool is active — capture the drag start position
+	const FVector DragStart = MDT->GetDragStartPos();
+	CachedSelStart = FIntPoint(FMath::FloorToInt32(DragStart.X), FMath::FloorToInt32(DragStart.Y));
+
+	//UE_LOG(LogSeamlessInstancing, Log, TEXT("TickSelectionCheck: captured drag start (%d, %d)"), CachedSelStart.X, CachedSelStart.Y);
+
+	return true;
+}
+
 // ----- Selection-change handler --------------------------------------------
 
 void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementSelectionSet* SelectionSet)
@@ -429,6 +501,13 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 	{
 		return;
 	}
+
+	// Capture and immediately clear the cached selection-rect start.
+	// TickSelectionCheck set this when it detected a drag-tool activation.
+	const FIntPoint SelStart = CachedSelStart;
+	CachedSelStart = FIntPoint(-1, -1);
+
+	//UE_LOG(LogSeamlessInstancing, Log, TEXT("OnSelectionChanged: set drag start (%d, %d)"), SelStart.X, SelStart.Y);
 
 	// Snapshot the current selection set
 	TSet<TWeakObjectPtr<AActor>> CurrentSelection;
@@ -476,7 +555,10 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 	for (const TWeakObjectPtr<AActor>& CurrentActor : CurrentSelection)
 	{
 		AActor* Actor = CurrentActor.Get();
-		if (!Actor) continue;
+		if (!Actor)
+		{
+			continue;
+		}
 		if (Actor->Tags.Contains(TEXT("SeamlessInstanceActor")) && !PreviousSelectedActors.Contains(Actor))
 		{
 			NewlySelectedAggregates.Add(Actor);
@@ -504,11 +586,58 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 	{
 		for (AActor* Aggregate : NewlySelectedAggregates)
 		{
-			int32 InstanceIndex = INDEX_NONE;
-			UInstancedStaticMeshComponent* HitISMC = nullptr;
-			if (FindClickedInstance(Aggregate, InstanceIndex, HitISMC))
+			// Detect box/frustum selection first using the cached selection-rect
+			bool bSelectionHandled = false;
+			if (GEditor)
 			{
-				BreakInstance(HitISMC, InstanceIndex);
+				if (FViewport* ActiveViewport = GEditor->GetActiveViewport())
+				{
+					if (SelStart.X >= 0 && SelStart.Y >= 0)
+					{
+						// Build normalized rect from cached start to current mouse position
+						const int32 MX = ActiveViewport->GetMouseX();
+						const int32 MY = ActiveViewport->GetMouseY();
+						const FIntRect SelectionRect(FMath::Min(SelStart.X, MX), FMath::Min(SelStart.Y, MY),
+													 FMath::Max(SelStart.X, MX), FMath::Max(SelStart.Y, MY));
+
+						//UE_LOG(LogSeamlessInstancing, Log, TEXT("OnSelectionChanged: Sel (%d, %d, %d, %d)"), SelectionRect.Min.X, SelectionRect.Min.Y, SelectionRect.Max.X, SelectionRect.Max.Y);
+
+						// Use the viewport's hit-proxy rect query
+						TArray<TPair<UInstancedStaticMeshComponent*, int32>> Selected = FindSelectionInstances(ActiveViewport, Aggregate, SelectionRect);
+
+						// Break in descending instance index order per ISMC so removal doesn't
+						// invalidate indices of instances we haven't processed yet.
+						Selected.Sort([](const TPair<UInstancedStaticMeshComponent*, int32>& A, const TPair<UInstancedStaticMeshComponent*, int32>& B)
+						{
+							if (A.Key != B.Key)
+							{
+								return A.Key < B.Key;
+							}
+							return A.Value > B.Value;
+						});
+
+						for (const TPair<UInstancedStaticMeshComponent*, int32>& Sel : Selected)
+						{
+							if (IsValid(Sel.Key) && IsValid(Aggregate))
+							{
+								BreakInstance(Sel.Key, Sel.Value);
+							}
+						}
+
+						bSelectionHandled = true;
+					}
+				}
+			}
+
+			// If no drag tool was active, handle as a single-instance click
+			if (!bSelectionHandled)
+			{
+				int32 InstanceIndex = INDEX_NONE;
+				UInstancedStaticMeshComponent* HitISMC = nullptr;
+				if (FindClickedInstance(Aggregate, InstanceIndex, HitISMC))
+				{
+					BreakInstance(HitISMC, InstanceIndex);
+				}
 			}
 		}
 	}

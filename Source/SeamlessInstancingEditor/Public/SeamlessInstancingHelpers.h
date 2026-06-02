@@ -13,6 +13,7 @@ class UWorldPartitionEditorSpatialHash;
 class UDataLayerAsset;
 class FArchive;
 class FProperty;
+class FViewport;
 
 // ----- Property helpers ---------------------------------------------------
 
@@ -53,6 +54,9 @@ bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedS
 
 /** Convert a single ISM instance to a StaticMeshActor and select it */
 void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex);
+
+/** Find all ISM instances on Aggregate whose hit-proxy screen bounds intersect the rect */
+TArray<TPair<UInstancedStaticMeshComponent*, int32>> FindSelectionInstances(FViewport* Viewport, AActor* Aggregate, const FIntRect& SelectionRect);
 
 // ----- World Partition helpers -------------------------------------------
 
