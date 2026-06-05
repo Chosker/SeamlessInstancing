@@ -3,7 +3,6 @@
 #include "SeamlessInstancingEditorSubsystem.h"
 #include "SeamlessInstancingEditorModule.h"
 #include "SeamlessInstancingHelpers.h"
-
 #include "Editor.h"
 #include "EngineUtils.h"
 #include "Selection.h"
@@ -15,16 +14,21 @@
 #include "Engine/StaticMeshActor.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "DrawDebugHelpers.h"
+#include "EditorViewportClient.h"
+#include "SceneView.h"
+#include "InputCoreTypes.h"
+#include "Framework/Application/SlateApplication.h"
 
 #define LOCTEXT_NAMESPACE "SeamlessInstancing"
 
-
-// ----- Subsystem implementation -------------------------------------------
+// ============================================================================
+// Subsystem implementation
+// ============================================================================
 
 void USeamlessInstancingEditorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-
 	if (GEditor)
 	{
 		Collection.InitializeDependency<ULevelEditorSubsystem>();
@@ -80,7 +84,6 @@ void USeamlessInstancingEditorSubsystem::Deinitialize()
 	bSelectionEventsBound = false;
 
 	UE_LOG(LogSeamlessInstancing, Log, TEXT("SeamlessInstancingEditorSubsystem deinitialized."));
-
 	Super::Deinitialize();
 }
 
@@ -113,7 +116,6 @@ void USeamlessInstancingEditorSubsystem::ConvertAllSMToInstanced()
 		{
 			continue;
 		}
-
 		ActorsToConvert.Add(SMActor);
 	}
 
@@ -158,14 +160,12 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			if (EditorSpatialHash)
 			{
 				bUseCellGrouping = true;
-
 				const int32 CellSize = GetWorldPartitionCellSize(EditorSpatialHash);
 
 				for (AStaticMeshActor* SMActor : ActorsToConvert)
 				{
 					UWorldPartitionEditorSpatialHash::FCellCoord Cell = EditorSpatialHash->GetCellCoords(SMActor->GetActorLocation(), 0);
 					FCachedCellCoord CacheKey{Cell.X, Cell.Y};
-
 					ActorToCell.Add(SMActor, CacheKey);
 
 					AActor*& Found = CellToAggregate.FindOrAdd(CacheKey);
@@ -192,7 +192,6 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 	}
 
 	TArray<AActor*> ActorsToDestroy;
-
 	GEditor->BeginTransaction(LOCTEXT("ConvertSMToInstanced", "Convert SM Actors to Instanced"));
 
 	for (AStaticMeshActor* SMActor : ActorsToConvert)
@@ -212,11 +211,12 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 		InstanceKey.Mesh = SMC->GetStaticMesh();
 		InstanceKey.PropertiesHash = HashComponentProperties(SMC, RelevantProperties);
 
-		// Scan the aggregate for an existing ISMC with matching mesh and properties and stash the property hash in ComponentTags
+		// Scan the aggregate for an existing ISMC with matching mesh and properties
 		UInstancedStaticMeshComponent* ISMC = nullptr;
 		{
 			TArray<UInstancedStaticMeshComponent*> ExistingISMCs;
 			AggregateActor->GetComponents(ExistingISMCs);
+
 			const FName IncomingHashTag = FName(*FString::Printf(TEXT("SrcHash_%u"), InstanceKey.PropertiesHash));
 			for (UInstancedStaticMeshComponent* Existing : ExistingISMCs)
 			{
@@ -285,16 +285,13 @@ void USeamlessInstancingEditorSubsystem::ConvertAllInstancedToSM()
 		{
 			continue;
 		}
-
 		AActor* Aggregate = *It;
 		TArray<UInstancedStaticMeshComponent*> ISMCs;
 		Aggregate->GetComponents(ISMCs);
-
 		if (ISMCs.IsEmpty())
 		{
 			continue;
 		}
-
 		AggregatesToConvert.Add(Aggregate);
 	}
 
@@ -333,7 +330,6 @@ void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActo
 			}
 
 			const int32 NumInstances = ISMC->GetInstanceCount();
-
 			for (int32 i = 0; i < NumInstances; ++i)
 			{
 				FTransform InstanceTransform;
@@ -383,7 +379,9 @@ void USeamlessInstancingEditorSubsystem::SetSeamlessEnabled(bool bEnabled)
 	GConfig->Flush(false, GEditorPerProjectIni);
 }
 
-// ----- Lazy binding ---------------------------------------------------------
+// ============================================================================
+// Lazy binding
+// ============================================================================
 
 void USeamlessInstancingEditorSubsystem::TryBindSelectionEvents()
 {
@@ -413,7 +411,8 @@ void USeamlessInstancingEditorSubsystem::TryBindSelectionEvents()
 	// Selection set not ready yet, retry via ticker
 	if (!TickerHandle.IsValid())
 	{
-		TickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &USeamlessInstancingEditorSubsystem::TickBindRetry), 0.5f);
+		TickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateUObject(this, &USeamlessInstancingEditorSubsystem::TickBindRetry), 0.5f);
 	}
 }
 
@@ -423,17 +422,13 @@ bool USeamlessInstancingEditorSubsystem::TickBindRetry(float DeltaTime)
 	return !bSelectionEventsBound;
 }
 
+// ============================================================================
+// Tick-based rect capture
+// ============================================================================
 
-// ----- Tick-based rect capture ------------------------------------------------
-// why return bool?
 bool USeamlessInstancingEditorSubsystem::TickSelectionCheck(float DeltaTime)
 {
-	if (!IsSeamlessEnabled())
-	{
-		return true;
-	}
-
-	if (!GEditor)
+	if (!IsSeamlessEnabled() || !GEditor)
 	{
 		return true;
 	}
@@ -444,13 +439,6 @@ bool USeamlessInstancingEditorSubsystem::TickSelectionCheck(float DeltaTime)
 		return true;
 	}
 
-	/*FViewportClient* VC = ActiveViewport->GetClient();
-	if (!VC)
-	{
-		return true;
-	}*/
-
-	//FEditorViewportClient* EditorVC = static_cast<FEditorViewportClient*>(VC);
 	FEditorViewportClient* EditorVC = static_cast<FEditorViewportClient*>(ActiveViewport->GetClient());
 	if (!EditorVC)
 	{
@@ -463,51 +451,58 @@ bool USeamlessInstancingEditorSubsystem::TickSelectionCheck(float DeltaTime)
 		return true;
 	}
 
-	// No drag in progress — skip
-	// "a cancelled drag (mouse-up outside the viewport, escape, etc.) won't fire OnSelectionChanged, so CachedSelStart will hold the last drag's start pixel coords.
-	// The next time anything does trigger a selection change (even a single click on an aggregate), the box-select branch will see SelStart.X >= 0 and treat it as a real
-	// box - select rect, building the rect from the stale start to the current mouse position — which could be a giant rect that breaks a bunch of unintended instances."
-	// TODO: check if this is actually a problem: pressing Esc doesnt cancel, and other cases seem to fire OnSelectionChanged
-	if (!MDT->UsingDragTool())
+	// Continuously rebuild the rect from live tracker state during any active drag
+	if (MDT->UsingDragTool())
 	{
-		return true;
-	}
+		const FVector Start = MDT->GetDragStartPos();
+		const FVector End   = Start + MDT->GetAbsoluteDelta() * FVector(1, -1, 1);
 
-	// Already captured for this drag operation
-	if (CachedSelStart.X >= 0 && CachedSelStart.Y >= 0)
+		const FIntPoint MinPt(FMath::FloorToInt32(FMath::Min(Start.X, End.X)),
+							  FMath::FloorToInt32(FMath::Min(Start.Y, End.Y)));
+		const FIntPoint MaxPt(FMath::FloorToInt32(FMath::Max(Start.X, End.X)),
+							  FMath::FloorToInt32(FMath::Max(Start.Y, End.Y)));
+		CachedSelectionRect = FIntRect(MinPt, MaxPt);
+		
+		// Clamp to screen
+		CachedSelectionRect.Min.X = FMath::Max(CachedSelectionRect.Min.X, 0);
+		CachedSelectionRect.Min.Y = FMath::Max(CachedSelectionRect.Min.Y, 0);
+		CachedSelectionRect.Max.X = FMath::Min(CachedSelectionRect.Max.X, ActiveViewport->GetSizeXY().X);
+		CachedSelectionRect.Max.Y = FMath::Min(CachedSelectionRect.Max.Y, ActiveViewport->GetSizeXY().Y);
+
+		//UE_LOG(LogSeamlessInstancing, Log, TEXT("TickSelectionCheck: Start(%f, %f), Delta(%f, %f), End(%f, %f), Cached (%d, %d)"),
+		//	Start.X, Start.Y, MDT->GetAbsoluteDelta().X, MDT->GetAbsoluteDelta().Y, End.X, End.Y, CachedSelectionRect.Min.Y, CachedSelectionRect.Max.Y);
+	}
+	else if (CachedSelectionRect.Width() < 4 || CachedSelectionRect.Height() < 4)
 	{
-		return true;
+		// No drag in progress and the cached rect is degenerate — discard so the next
+		// OnSelectionChanged falls through to the single-click path. The 4-px floor
+		// matches the engine's own MOUSE_CLICK_DRAG_DELTA threshold and filters clicks
+		// and synthetic drags (gizmo tweaks) that don't represent a real marquee.
+		CachedSelectionRect = FIntRect();
 	}
-
-	// Drag tool is active — capture the drag start position
-	const FVector DragStart = MDT->GetDragStartPos();
-	CachedSelStart = FIntPoint(FMath::FloorToInt32(DragStart.X), FMath::FloorToInt32(DragStart.Y));
-
-	//UE_LOG(LogSeamlessInstancing, Log, TEXT("TickSelectionCheck: captured drag start (%d, %d)"), CachedSelStart.X, CachedSelStart.Y);
 
 	return true;
 }
 
-// ----- Selection-change handler --------------------------------------------
+// ============================================================================
+// Selection-change handler
+// ============================================================================
 
 void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementSelectionSet* SelectionSet)
 {
-	if (bIsConverting)
-	{
-		return;
-	}
-
 	if (!IsSeamlessEnabled())
 	{
 		return;
 	}
 
-	// Capture and immediately clear the cached selection-rect start.
-	// TickSelectionCheck set this when it detected a drag-tool activation.
-	const FIntPoint SelStart = CachedSelStart;
-	CachedSelStart = FIntPoint(-1, -1);
+	if (bIsConverting)
+	{
+		return;
+	}
 
-	//UE_LOG(LogSeamlessInstancing, Log, TEXT("OnSelectionChanged: set drag start (%d, %d)"), SelStart.X, SelStart.Y);
+	// Consume the rect captured by TickSelectionCheck during the most recent drag.
+	const FIntRect SelRect = CachedSelectionRect;
+	CachedSelectionRect = FIntRect();
 
 	// Snapshot the current selection set
 	TSet<TWeakObjectPtr<AActor>> CurrentSelection;
@@ -588,43 +583,112 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 		{
 			// Detect box/frustum selection first using the cached selection-rect
 			bool bSelectionHandled = false;
+
 			if (GEditor)
 			{
 				if (FViewport* ActiveViewport = GEditor->GetActiveViewport())
 				{
-					if (SelStart.X >= 0 && SelStart.Y >= 0)
+					if (SelRect.Width() > 0 && SelRect.Height() > 0)
 					{
-						// Build normalized rect from cached start to current mouse position
-						const int32 MX = ActiveViewport->GetMouseX();
-						const int32 MY = ActiveViewport->GetMouseY();
-						const FIntRect SelectionRect(FMath::Min(SelStart.X, MX), FMath::Min(SelStart.Y, MY),
-													 FMath::Max(SelStart.X, MX), FMath::Max(SelStart.Y, MY));
-
-						//UE_LOG(LogSeamlessInstancing, Log, TEXT("OnSelectionChanged: Sel (%d, %d, %d, %d)"), SelectionRect.Min.X, SelectionRect.Min.Y, SelectionRect.Max.X, SelectionRect.Max.Y);
+						UE_LOG(LogSeamlessInstancing, Log, TEXT("OnSelectionChanged: Rect(%d,%d,%d,%d) ViewSize(%d,%d)"),
+							SelRect.Min.X, SelRect.Min.Y, SelRect.Max.X, SelRect.Max.Y,
+							ActiveViewport->GetSizeXY().X, ActiveViewport->GetSizeXY().Y);
 
 						// Use the viewport's hit-proxy rect query
-						TArray<TPair<UInstancedStaticMeshComponent*, int32>> Selected = FindSelectionInstances(ActiveViewport, Aggregate, SelectionRect);
+						TArray<TPair<UInstancedStaticMeshComponent*, int32>> Selected = FindSelectionInstances(ActiveViewport, Aggregate, SelRect);
 
-						// Break in descending instance index order per ISMC so removal doesn't
-						// invalidate indices of instances we haven't processed yet.
-						Selected.Sort([](const TPair<UInstancedStaticMeshComponent*, int32>& A, const TPair<UInstancedStaticMeshComponent*, int32>& B)
+						// DEBUG: draw a 3D box matching the viewport selection rect (visible for 100s)
+						if (FEditorViewportClient* EditorVC = static_cast<FEditorViewportClient*>(ActiveViewport->GetClient()))
 						{
-							if (A.Key != B.Key)
+							if (UWorld* World = GEditor->GetEditorWorldContext().World())
 							{
-								return A.Key < B.Key;
-							}
-							return A.Value > B.Value;
-						});
+								// Project the 4 pixel-space rect corners through the view's own
+								// PixelToWorld path (same one FDragTool_BoxSelect::CalculateBox uses).
+								// Z=0.5 picks mid-depth in NDC, so the resulting box sits in the
+								// middle of the frustum and aligns with the rect at any camera
+								// rotation — including steep pitches where world-up no longer
+								// matches screen-up.
+								FSceneViewFamilyContext ViewFamily(FSceneViewFamily::ConstructionValues(
+									ActiveViewport,
+									EditorVC->GetScene(),
+									EditorVC->EngineShowFlags)
+									.SetRealtimeUpdate(EditorVC->IsRealtime()));
 
-						for (const TPair<UInstancedStaticMeshComponent*, int32>& Sel : Selected)
-						{
-							if (IsValid(Sel.Key) && IsValid(Aggregate))
-							{
-								BreakInstance(Sel.Key, Sel.Value);
+								if (FSceneView* View = EditorVC->CalcSceneView(&ViewFamily))
+								{
+									// Z=0.5 = mid-NDC depth. The 4 corners lie on the mid-depth plane,
+									// which is what we want to draw through. Using the AABB of those 4
+									// points gives a rotation-invariant box that projects back onto the
+									// rect edges exactly — regardless of camera pitch/yaw.
+									const FVector WorldTL = View->ScreenToWorld(View->PixelToScreen(SelRect.Min.X, SelRect.Min.Y, 0.5f));
+									const FVector WorldTR = View->ScreenToWorld(View->PixelToScreen(SelRect.Max.X, SelRect.Min.Y, 0.5f));
+									const FVector WorldBL = View->ScreenToWorld(View->PixelToScreen(SelRect.Min.X, SelRect.Max.Y, 0.5f));
+									const FVector WorldBR = View->ScreenToWorld(View->PixelToScreen(SelRect.Max.X, SelRect.Max.Y, 0.5f));
+
+									FBox WorldBox(EForceInit::ForceInit);
+									WorldBox += WorldTL;
+									WorldBox += WorldTR;
+									WorldBox += WorldBL;
+									WorldBox += WorldBR;
+									// The 4 corners are coplanar (mid-depth plane). Push each one
+									// forward and back along the view's forward axis, then re-fit
+									// the AABB — that gives the box visible thickness in 3D and
+									// keeps the AABB aligned with the projection edges on screen.
+									// GetViewDirection() points into the scene; ViewLocation-Center
+									// would point back toward the camera and is the wrong axis.
+									// Thickness scales with the box's screen-projected diagonal so the
+									// visualization stays visible at any zoom level — a constant 1u
+									// becomes paper-thin once the rect projects far into the world.
+									const FVector ViewForward = View->GetViewDirection();
+									const double BoxThickness = FMath::Max<double>(WorldBox.GetSize().Size() * 0.05, 50.0);
+									WorldBox += WorldTL - ViewForward * BoxThickness;
+									WorldBox += WorldTR - ViewForward * BoxThickness;
+									WorldBox += WorldBL - ViewForward * BoxThickness;
+									WorldBox += WorldBR - ViewForward * BoxThickness;
+									WorldBox += WorldTL + ViewForward * BoxThickness;
+									WorldBox += WorldTR + ViewForward * BoxThickness;
+									WorldBox += WorldBL + ViewForward * BoxThickness;
+									WorldBox += WorldBR + ViewForward * BoxThickness;
+
+									DrawDebugBox(
+										World,
+										WorldBox.GetCenter(),
+										WorldBox.GetExtent(),
+										FQuat::Identity,
+										FColor::Red,
+										false,    // bPersistentLines
+										100.0f,   // LifeTime
+										0,        // DepthPriority
+										5.0f      // Thickness (line thickness for visibility)
+									);
+								}
 							}
 						}
 
-						bSelectionHandled = true;
+						if (!Selected.IsEmpty())
+						{
+							// Break in descending instance index order per ISMC so removal doesn't
+							// invalidate indices of instances we haven't processed yet.
+							Selected.Sort([](const TPair<UInstancedStaticMeshComponent*, int32>& A, const TPair<UInstancedStaticMeshComponent*, int32>& B)
+							{
+								if (A.Key != B.Key)
+								{
+									return A.Key < B.Key;
+								}
+								return A.Value > B.Value;
+							});
+
+							for (const TPair<UInstancedStaticMeshComponent*, int32>& Sel : Selected)
+							{
+								if (IsValid(Sel.Key) && IsValid(Aggregate))
+								{
+									UE_LOG(LogSeamlessInstancing, Log, TEXT("FindSelectionInstances BreakInstance: %d"), Sel.Value);
+									BreakInstance(Sel.Key, Sel.Value);
+								}
+							}
+
+							bSelectionHandled = true;
+						}
 					}
 				}
 			}
@@ -636,6 +700,7 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 				UInstancedStaticMeshComponent* HitISMC = nullptr;
 				if (FindClickedInstance(Aggregate, InstanceIndex, HitISMC))
 				{
+					UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance BreakInstance: %d"), InstanceIndex);
 					BreakInstance(HitISMC, InstanceIndex);
 				}
 			}

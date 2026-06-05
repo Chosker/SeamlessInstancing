@@ -318,11 +318,10 @@ TArray<TPair<UInstancedStaticMeshComponent*, int32>> FindSelectionInstances(FVie
 		return Out;
 	}
 
-	// Per-instance hit proxies carry their own screen-space bounds, so the rect test
-	// matches what the user actually sees as "touched by the box" — far more accurate
-	// than projecting each instance's pivot through a scene view.
+	TSet<TPair<UInstancedStaticMeshComponent*, int32>> Seen;
+
 	Viewport->EnumerateHitProxiesInRect(SelectionRect,
-		[&Out, Aggregate](HHitProxy* HitProxy) -> bool
+		[&Out, Aggregate, &Seen](HHitProxy* HitProxy) -> bool
 		{
 			if (HitProxy && HitProxy->IsA(HInstancedStaticMeshInstance::StaticGetType()))
 			{
@@ -330,7 +329,13 @@ TArray<TPair<UInstancedStaticMeshComponent*, int32>> FindSelectionInstances(FVie
 				UInstancedStaticMeshComponent* ISMC = ISMH ? ISMH->Component : nullptr;
 				if (ISMC && ISMC->GetOwner() == Aggregate)
 				{
-					Out.Emplace(ISMC, ISMH->InstanceIndex);
+					const TPair<UInstancedStaticMeshComponent*, int32> Key(ISMC, ISMH->InstanceIndex);
+					bool bAlreadyInSet = false;
+					Seen.Add(Key, &bAlreadyInSet);
+					if (!bAlreadyInSet)
+					{
+						Out.Emplace(ISMC, ISMH->InstanceIndex);
+					}
 				}
 			}
 			return true; // keep iterating
