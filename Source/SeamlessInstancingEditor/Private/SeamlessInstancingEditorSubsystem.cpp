@@ -616,51 +616,67 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 
 								if (FSceneView* View = EditorVC->CalcSceneView(&ViewFamily))
 								{
-									// Z=0.5 = mid-NDC depth. The 4 corners lie on the mid-depth plane,
-									// which is what we want to draw through. Using the AABB of those 4
-									// points gives a rotation-invariant box that projects back onto the
-									// rect edges exactly — regardless of camera pitch/yaw.
-									const FVector WorldTL = View->ScreenToWorld(View->PixelToScreen(SelRect.Min.X, SelRect.Min.Y, 0.5f));
-									const FVector WorldTR = View->ScreenToWorld(View->PixelToScreen(SelRect.Max.X, SelRect.Min.Y, 0.5f));
-									const FVector WorldBL = View->ScreenToWorld(View->PixelToScreen(SelRect.Min.X, SelRect.Max.Y, 0.5f));
-									const FVector WorldBR = View->ScreenToWorld(View->PixelToScreen(SelRect.Max.X, SelRect.Max.Y, 0.5f));
-
-									FBox WorldBox(EForceInit::ForceInit);
-									WorldBox += WorldTL;
-									WorldBox += WorldTR;
-									WorldBox += WorldBL;
-									WorldBox += WorldBR;
-									// The 4 corners are coplanar (mid-depth plane). Push each one
-									// forward and back along the view's forward axis, then re-fit
-									// the AABB — that gives the box visible thickness in 3D and
-									// keeps the AABB aligned with the projection edges on screen.
-									// GetViewDirection() points into the scene; ViewLocation-Center
-									// would point back toward the camera and is the wrong axis.
-									// Thickness scales with the box's screen-projected diagonal so the
-									// visualization stays visible at any zoom level — a constant 1u
-									// becomes paper-thin once the rect projects far into the world.
+									// Build an oriented debug box that visually matches the screen rect.
+									// Use the engine's DeprojectScreenToWorld to get a world-space ray
+									// (origin + direction) for each corner, then step a chosen world
+									// distance along the ray to land each corner on a plane in front
+									// of the camera. The box is camera-aligned (width = right, height
+									// = up, depth = forward) so its screen-space silhouette matches
+									// the marquee exactly.
+									const FVector ViewLocation = View->ViewMatrices.GetViewOrigin();
 									const FVector ViewForward = View->GetViewDirection();
-									const double BoxThickness = FMath::Max<double>(WorldBox.GetSize().Size() * 0.05, 50.0);
-									WorldBox += WorldTL - ViewForward * BoxThickness;
-									WorldBox += WorldTR - ViewForward * BoxThickness;
-									WorldBox += WorldBL - ViewForward * BoxThickness;
-									WorldBox += WorldBR - ViewForward * BoxThickness;
-									WorldBox += WorldTL + ViewForward * BoxThickness;
-									WorldBox += WorldTR + ViewForward * BoxThickness;
-									WorldBox += WorldBL + ViewForward * BoxThickness;
-									WorldBox += WorldBR + ViewForward * BoxThickness;
+									const FVector ViewRight = FVector::CrossProduct(FVector::UpVector, ViewForward).GetSafeNormal();
+									const FVector ViewUp = FVector::CrossProduct(ViewForward, ViewRight).GetSafeNormal();
+									const double CornerDistance = 1000.0;
 
-									DrawDebugBox(
+									auto CornerAt = [&](float PixelX, float PixelY) -> FVector
+									{
+										FVector RayOrigin, RayDir;
+										View->DeprojectFVector2D(FVector2D(PixelX, PixelY), RayOrigin, RayDir);
+										return RayOrigin + RayDir * CornerDistance;
+									};
+
+									const FVector FarTL = CornerAt(SelRect.Min.X, SelRect.Min.Y);
+									const FVector FarTR = CornerAt(SelRect.Max.X, SelRect.Min.Y);
+									const FVector FarBL = CornerAt(SelRect.Min.X, SelRect.Max.Y);
+									const FVector FarBR = CornerAt(SelRect.Max.X, SelRect.Max.Y);
+
+									const FVector FarCenter = (FarTL + FarTR + FarBL + FarBR) * 0.25;
+
+									// Half-extents in the view basis.
+									const FVector LocalTL = FarTL - FarCenter;
+									const FVector LocalTR = FarTR - FarCenter;
+									const FVector LocalBL = FarBL - FarCenter;
+									const FVector LocalBR = FarBR - FarCenter;
+									const double HalfWidth  = FMath::Max<double>(FMath::Abs(FVector::DotProduct(LocalTR, ViewRight)) + FMath::Abs(FVector::DotProduct(LocalBR, ViewRight)), 1.0) * 0.5;
+									const double HalfHeight = FMath::Max<double>(FMath::Abs(FVector::DotProduct(LocalBL, ViewUp))   + FMath::Abs(FVector::DotProduct(LocalBR, ViewUp)),   1.0) * 0.5;
+									const double HalfDepth = 0.1f;
+
+									const FVector BoxCenter = FarCenter;
+									const FVector Extent(HalfWidth, HalfHeight, HalfDepth);
+									const FQuat BoxRotation = FQuat(FMatrix(
+										FPlane(ViewRight.X,   ViewRight.Y,   ViewRight.Z,   0),
+										FPlane(ViewUp.X,      ViewUp.Y,      ViewUp.Z,      0),
+										FPlane(ViewForward.X, ViewForward.Y, ViewForward.Z, 0),
+										FPlane(0, 0, 0, 1)
+									));
+
+									UE_LOG(LogSeamlessInstancing, Log, TEXT("DebugBox: ViewLoc=%s Forward=%s FarTL=%s FarCenter=%s HalfW=%f HalfH=%f HalfD=%f CornerDist=%f"),
+										*ViewLocation.ToString(), *ViewForward.ToString(),
+										*FarTL.ToString(), *FarCenter.ToString(),
+										HalfWidth, HalfHeight, HalfDepth, CornerDistance);
+
+									/*DrawDebugBox(
 										World,
-										WorldBox.GetCenter(),
-										WorldBox.GetExtent(),
-										FQuat::Identity,
+										BoxCenter,
+										Extent,
+										BoxRotation,
 										FColor::Red,
 										false,    // bPersistentLines
 										100.0f,   // LifeTime
-										0,        // DepthPriority
-										5.0f      // Thickness (line thickness for visibility)
-									);
+										SDPG_Foreground, // DepthPriority — draw on top so scene geometry doesn't occlude the lines in perspective views
+										0.0f      // Thickness (line thickness for visibility)
+									);*/
 								}
 							}
 						}
