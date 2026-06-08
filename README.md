@@ -15,6 +15,7 @@ Enjoy lightweight levels with instancing, with the proper UX of manipulating reg
 - Maintains most StaticMeshComponents' properties (i.e. Material override, collision options, cast shadows, etc) by making different Instanced Components when a different property is needed
 - Supports World Partition levels (instances are grouped per WP tile)
 - Works on perspective and ortho viewports
+- Works with pick-based selection and selection box
 
 ### Caveats and Considerations
 - Makes Actor Groups unusable. Needs some thinking on how they could be made to work
@@ -23,4 +24,4 @@ Enjoy lightweight levels with instancing, with the proper UX of manipulating reg
 ### TO DO
 - World Partition levels: data layers and different grids
 - Non World Partition levels, sublevels
-- A lot more stuff
+- More stuff
