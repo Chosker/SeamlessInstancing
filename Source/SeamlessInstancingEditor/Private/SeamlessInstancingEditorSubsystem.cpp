@@ -313,6 +313,13 @@ void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActo
 
 	const TArray<FProperty*> RelevantProperties = GatherProperties();
 
+	// Collect existing actor labels so we can make unique names
+	TSet<FString> ExistingLabels;
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		ExistingLabels.Add(It->GetActorLabel());
+	}
+
 	GEditor->BeginTransaction(LOCTEXT("ConvertInstancedToSM", "Convert Instanced to SM Actors"));
 
 	TArray<AActor*> AggregatesToDestroy;
@@ -342,6 +349,20 @@ void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActo
 				SMActor->SetActorTransform(InstanceTransform);
 				UStaticMeshComponent* NewSMC = SMActor->GetStaticMeshComponent();
 				NewSMC->SetStaticMesh(Mesh);
+
+				// Set the actor label to the mesh name (made unique)
+				{
+					FString BaseLabel = Mesh->GetName();
+					FString FinalLabel = BaseLabel;
+					int32 Suffix = 1;
+					while (ExistingLabels.Contains(FinalLabel))
+					{
+						FinalLabel = FString::Printf(TEXT("%s_%d"), *BaseLabel, Suffix++);
+					}
+					SMActor->SetActorLabel(FinalLabel);
+					ExistingLabels.Add(FinalLabel);
+				}
+
 				SMActor->Modify();
 
 				// Copy included properties from the ISMC onto the new SMC

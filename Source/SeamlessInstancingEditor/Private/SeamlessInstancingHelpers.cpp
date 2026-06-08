@@ -9,6 +9,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/StaticMeshActor.h"
+#include "EngineUtils.h"
 #include "WorldPartition/WorldPartition.h"
 #include "WorldPartition/WorldPartitionEditorSpatialHash.h"
 #include "WorldPartition/DataLayer/DataLayerInstance.h"
@@ -256,6 +257,27 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
 
 	UStaticMeshComponent* NewSMC = NewSMActor->GetStaticMeshComponent();
 	NewSMC->SetStaticMesh(Mesh);
+
+	// Set the actor label to the mesh name (made unique across all actors in the world)
+	{
+		TSet<FString> ExistingLabels;
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			if (*It != NewSMActor)
+			{
+				ExistingLabels.Add(It->GetActorLabel());
+			}
+		}
+
+		FString BaseLabel = Mesh->GetName();
+		FString FinalLabel = BaseLabel;
+		int32 Suffix = 1;
+		while (ExistingLabels.Contains(FinalLabel))
+		{
+			FinalLabel = FString::Printf(TEXT("%s_%d"), *BaseLabel, Suffix++);
+		}
+		NewSMActor->SetActorLabel(FinalLabel);
+	}
 
 	// Copy included properties from ISMC onto the new SMC
 	for (FProperty* Prop : RelevantProperties)
