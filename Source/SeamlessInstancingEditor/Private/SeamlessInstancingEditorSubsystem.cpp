@@ -454,15 +454,12 @@ bool USeamlessInstancingEditorSubsystem::TickSelectionCheck(float DeltaTime)
 	// Continuously rebuild the rect from live tracker state during any active drag
 	if (MouseTracker->UsingDragTool())
 	{
-		const FVector Start = MouseTracker->GetDragStartPos();
-		FIntPoint MousePos;
-		ActiveViewport->GetMousePos(MousePos);
-		const FVector End = FVector(MousePos);
+		FIntPoint Start = FIntPoint(FMath::FloorToInt32(MouseTracker->GetDragStartPos().X), FMath::FloorToInt32(MouseTracker->GetDragStartPos().Y));
+		FIntPoint End;
+		ActiveViewport->GetMousePos(End);
+		const FIntPoint MinPt(FMath::Min(Start.X, End.X), FMath::Min(Start.Y, End.Y));
+		const FIntPoint MaxPt(FMath::Max(Start.X, End.X), FMath::Max(Start.Y, End.Y));
 
-		const FIntPoint MinPt(FMath::FloorToInt32(FMath::Min(Start.X, End.X)),
-							  FMath::FloorToInt32(FMath::Min(Start.Y, End.Y)));
-		const FIntPoint MaxPt(FMath::FloorToInt32(FMath::Max(Start.X, End.X)),
-							  FMath::FloorToInt32(FMath::Max(Start.Y, End.Y)));
 		CachedSelectionRect = FIntRect(MinPt, MaxPt);
 
 		// Clamp to screen
@@ -682,8 +679,7 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 
 						if (!Selected.IsEmpty())
 						{
-							// Break in descending instance index order per ISMC so removal doesn't
-							// invalidate indices of instances we haven't processed yet.
+							// Break in inverse index order per ISMC so removal doesn't invalidate indices of instances we haven't processed yet
 							Selected.Sort([](const TPair<UInstancedStaticMeshComponent*, int32>& A, const TPair<UInstancedStaticMeshComponent*, int32>& B)
 							{
 								if (A.Key != B.Key)
