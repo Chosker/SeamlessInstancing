@@ -445,39 +445,44 @@ bool USeamlessInstancingEditorSubsystem::TickSelectionCheck(float DeltaTime)
 		return true;
 	}
 
-	FMouseDeltaTracker* MDT = EditorVC->GetMouseDeltaTracker();
-	if (!MDT)
+	FMouseDeltaTracker* MouseTracker = EditorVC->GetMouseDeltaTracker();
+	if (!MouseTracker)
 	{
 		return true;
 	}
 
 	// Continuously rebuild the rect from live tracker state during any active drag
-	if (MDT->UsingDragTool())
+	if (MouseTracker->UsingDragTool())
 	{
-		const FVector Start = MDT->GetDragStartPos();
-		const FVector End   = Start + MDT->GetAbsoluteDelta() * FVector(1, -1, 1);
+		const FVector Start = MouseTracker->GetDragStartPos();
+		FIntPoint MousePos;
+		ActiveViewport->GetMousePos(MousePos);
+		const FVector End = FVector(MousePos);
 
 		const FIntPoint MinPt(FMath::FloorToInt32(FMath::Min(Start.X, End.X)),
 							  FMath::FloorToInt32(FMath::Min(Start.Y, End.Y)));
 		const FIntPoint MaxPt(FMath::FloorToInt32(FMath::Max(Start.X, End.X)),
 							  FMath::FloorToInt32(FMath::Max(Start.Y, End.Y)));
 		CachedSelectionRect = FIntRect(MinPt, MaxPt);
-		
+
 		// Clamp to screen
 		CachedSelectionRect.Min.X = FMath::Max(CachedSelectionRect.Min.X, 0);
 		CachedSelectionRect.Min.Y = FMath::Max(CachedSelectionRect.Min.Y, 0);
 		CachedSelectionRect.Max.X = FMath::Min(CachedSelectionRect.Max.X, ActiveViewport->GetSizeXY().X);
 		CachedSelectionRect.Max.Y = FMath::Min(CachedSelectionRect.Max.Y, ActiveViewport->GetSizeXY().Y);
 
-		//UE_LOG(LogSeamlessInstancing, Log, TEXT("TickSelectionCheck: Start(%f, %f), Delta(%f, %f), End(%f, %f), Cached (%d, %d)"),
-		//	Start.X, Start.Y, MDT->GetAbsoluteDelta().X, MDT->GetAbsoluteDelta().Y, End.X, End.Y, CachedSelectionRect.Min.Y, CachedSelectionRect.Max.Y);
+		/*UE_LOG(LogSeamlessInstancing, Log,
+			TEXT("TickRect: MouseTracker.Start=(%f,%f) Delta=(%f,%f) Cached=(%d,%d)-(%d,%d) MousePos=(%d,%d) ViewSize=%s"),
+			Start.X, Start.Y,
+			MouseTracker->GetAbsoluteDelta().X, MouseTracker->GetAbsoluteDelta().Y,
+			CachedSelectionRect.Min.X, CachedSelectionRect.Min.Y,
+			CachedSelectionRect.Max.X, CachedSelectionRect.Max.Y,
+			MousePos.X, MousePos.Y,
+			*ActiveViewport->GetSizeXY().ToString());*/
 	}
+	// Discard if rect < MOUSE_CLICK_DRAG_DELTA
 	else if (CachedSelectionRect.Width() < 4 || CachedSelectionRect.Height() < 4)
 	{
-		// No drag in progress and the cached rect is degenerate — discard so the next
-		// OnSelectionChanged falls through to the single-click path. The 4-px floor
-		// matches the engine's own MOUSE_CLICK_DRAG_DELTA threshold and filters clicks
-		// and synthetic drags (gizmo tweaks) that don't represent a real marquee.
 		CachedSelectionRect = FIntRect();
 	}
 
@@ -590,96 +595,90 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 				{
 					if (SelRect.Width() > 0 && SelRect.Height() > 0)
 					{
-						UE_LOG(LogSeamlessInstancing, Log, TEXT("OnSelectionChanged: Rect(%d,%d,%d,%d) ViewSize(%d,%d)"),
+						/*UE_LOG(LogSeamlessInstancing, Log, TEXT("OnSelectionChanged: Rect(%d,%d,%d,%d) ViewSize(%d,%d)"),
 							SelRect.Min.X, SelRect.Min.Y, SelRect.Max.X, SelRect.Max.Y,
-							ActiveViewport->GetSizeXY().X, ActiveViewport->GetSizeXY().Y);
+							ActiveViewport->GetSizeXY().X, ActiveViewport->GetSizeXY().Y);*/
 
 						// Use the viewport's hit-proxy rect query
 						TArray<TPair<UInstancedStaticMeshComponent*, int32>> Selected = FindSelectionInstances(ActiveViewport, Aggregate, SelRect);
 
-						// DEBUG: draw a 3D box matching the viewport selection rect (visible for 100s)
-						if (FEditorViewportClient* EditorVC = static_cast<FEditorViewportClient*>(ActiveViewport->GetClient()))
+						// DEBUG: draw a 3D box matching the viewport selection rect
+						/*if (FEditorViewportClient* EditorVC = static_cast<FEditorViewportClient*>(ActiveViewport->GetClient()))
 						{
 							if (UWorld* World = GEditor->GetEditorWorldContext().World())
 							{
-								// Project the 4 pixel-space rect corners through the view's own
-								// PixelToWorld path (same one FDragTool_BoxSelect::CalculateBox uses).
-								// Z=0.5 picks mid-depth in NDC, so the resulting box sits in the
-								// middle of the frustum and aligns with the rect at any camera
-								// rotation — including steep pitches where world-up no longer
-								// matches screen-up.
-								FSceneViewFamilyContext ViewFamily(FSceneViewFamily::ConstructionValues(
-									ActiveViewport,
-									EditorVC->GetScene(),
-									EditorVC->EngineShowFlags)
-									.SetRealtimeUpdate(EditorVC->IsRealtime()));
+								FSceneViewFamilyContext ViewFamily(FSceneViewFamily::ConstructionValues(ActiveViewport, EditorVC->GetScene(), EditorVC->EngineShowFlags).SetRealtimeUpdate(EditorVC->IsRealtime()));
 
 								if (FSceneView* View = EditorVC->CalcSceneView(&ViewFamily))
 								{
-									// Build an oriented debug box that visually matches the screen rect.
-									// Use the engine's DeprojectScreenToWorld to get a world-space ray
-									// (origin + direction) for each corner, then step a chosen world
-									// distance along the ray to land each corner on a plane in front
-									// of the camera. The box is camera-aligned (width = right, height
-									// = up, depth = forward) so its screen-space silhouette matches
-									// the marquee exactly.
+									// Build an oriented debug box that visually matches the screen rect
 									const FVector ViewLocation = View->ViewMatrices.GetViewOrigin();
 									const FVector ViewForward = View->GetViewDirection();
-									const FVector ViewRight = FVector::CrossProduct(FVector::UpVector, ViewForward).GetSafeNormal();
-									const FVector ViewUp = FVector::CrossProduct(ViewForward, ViewRight).GetSafeNormal();
+									const FIntRect ViewRect = View->UnscaledViewRect;
 									const double CornerDistance = 1000.0;
 
-									auto CornerAt = [&](float PixelX, float PixelY) -> FVector
+									auto UnprojectToFrustum = [&](float PixelX, float PixelY, FVector& OutPoint) -> bool
 									{
 										FVector RayOrigin, RayDir;
 										View->DeprojectFVector2D(FVector2D(PixelX, PixelY), RayOrigin, RayDir);
-										return RayOrigin + RayDir * CornerDistance;
+										const double Forward = FVector::DotProduct(RayDir, ViewForward);
+										if (FMath::Abs(Forward) < UE_KINDA_SMALL_NUMBER)
+										{
+											return false;
+										}
+										OutPoint = RayOrigin + RayDir * (CornerDistance / Forward);
+										return true;
 									};
 
-									const FVector FarTL = CornerAt(SelRect.Min.X, SelRect.Min.Y);
-									const FVector FarTR = CornerAt(SelRect.Max.X, SelRect.Min.Y);
-									const FVector FarBL = CornerAt(SelRect.Min.X, SelRect.Max.Y);
-									const FVector FarBR = CornerAt(SelRect.Max.X, SelRect.Max.Y);
+									FVector TL, TR, BR, BL;
+									if (!UnprojectToFrustum(SelRect.Min.X, SelRect.Min.Y, TL) ||
+										!UnprojectToFrustum(SelRect.Max.X, SelRect.Min.Y, TR) ||
+										!UnprojectToFrustum(SelRect.Max.X, SelRect.Max.Y, BR) ||
+										!UnprojectToFrustum(SelRect.Min.X, SelRect.Max.Y, BL))
+									{
+										return;
+									}
 
-									const FVector FarCenter = (FarTL + FarTR + FarBL + FarBR) * 0.25;
+									const FVector BoxCenter = (TL + TR + BR + BL) * 0.25;
+									const FVector ScreenRight = ((TR - TL) + (BR - BL)).GetSafeNormal();
+									const FVector ScreenUp = ((BL - TL) + (BR - TR)).GetSafeNormal();
+									const FVector ScreenForward = FVector::CrossProduct(ScreenRight, ScreenUp).GetSafeNormal();
 
-									// Half-extents in the view basis.
-									const FVector LocalTL = FarTL - FarCenter;
-									const FVector LocalTR = FarTR - FarCenter;
-									const FVector LocalBL = FarBL - FarCenter;
-									const FVector LocalBR = FarBR - FarCenter;
-									const double HalfWidth  = FMath::Max<double>(FMath::Abs(FVector::DotProduct(LocalTR, ViewRight)) + FMath::Abs(FVector::DotProduct(LocalBR, ViewRight)), 1.0) * 0.5;
-									const double HalfHeight = FMath::Max<double>(FMath::Abs(FVector::DotProduct(LocalBL, ViewUp))   + FMath::Abs(FVector::DotProduct(LocalBR, ViewUp)),   1.0) * 0.5;
+									// Per-edge depths (along ViewForward)
+									const double DepthTL = FVector::DotProduct(TL - ViewLocation, ViewForward);
+									const double DepthTR = FVector::DotProduct(TR - ViewLocation, ViewForward);
+									const double DepthBL = FVector::DotProduct(BL - ViewLocation, ViewForward);
+									const double DepthBR = FVector::DotProduct(BR - ViewLocation, ViewForward);
+
+									auto HarmonicMean = [](double A, double B) -> double
+									{
+										return (FMath::Abs(A + B) > UE_KINDA_SMALL_NUMBER)
+											? (2.0 * A * B) / (A + B)
+											: (A + B) * 0.5;
+									};
+									const double WidthDepth  = HarmonicMean(HarmonicMean(DepthTL, DepthTR), HarmonicMean(DepthBL, DepthBR));
+									const double HeightDepth = HarmonicMean(HarmonicMean(DepthTL, DepthBL), HarmonicMean(DepthTR, DepthBR));
+									const double EdgeWidthDepth  = (DepthTL + DepthTR) * 0.5;
+									const double EdgeHeightDepth = (DepthTL + DepthBL) * 0.5;
+									const double WidthScale  = (EdgeWidthDepth  > UE_KINDA_SMALL_NUMBER) ? WidthDepth  / EdgeWidthDepth  : 1.0;
+									const double HeightScale = (EdgeHeightDepth > UE_KINDA_SMALL_NUMBER) ? HeightDepth / EdgeHeightDepth : 1.0;
+
+									const double HalfWidth  = ((TR - TL).Size() + (BR - BL).Size()) * 0.25 * WidthScale;
+									const double HalfHeight = ((BL - TL).Size() + (BR - TR).Size()) * 0.25 * HeightScale;
 									const double HalfDepth = 0.1f;
 
-									const FVector BoxCenter = FarCenter;
-									const FVector Extent(HalfWidth, HalfHeight, HalfDepth);
+									const FVector Extent(FMath::Max(HalfWidth, 0.1), FMath::Max(HalfHeight, 0.1), HalfDepth);
 									const FQuat BoxRotation = FQuat(FMatrix(
-										FPlane(ViewRight.X,   ViewRight.Y,   ViewRight.Z,   0),
-										FPlane(ViewUp.X,      ViewUp.Y,      ViewUp.Z,      0),
-										FPlane(ViewForward.X, ViewForward.Y, ViewForward.Z, 0),
+										FPlane(ScreenRight.X,   ScreenRight.Y,   ScreenRight.Z,   0),
+										FPlane(ScreenUp.X,      ScreenUp.Y,      ScreenUp.Z,      0),
+										FPlane(ScreenForward.X, ScreenForward.Y, ScreenForward.Z, 0),
 										FPlane(0, 0, 0, 1)
 									));
 
-									UE_LOG(LogSeamlessInstancing, Log, TEXT("DebugBox: ViewLoc=%s Forward=%s FarTL=%s FarCenter=%s HalfW=%f HalfH=%f HalfD=%f CornerDist=%f"),
-										*ViewLocation.ToString(), *ViewForward.ToString(),
-										*FarTL.ToString(), *FarCenter.ToString(),
-										HalfWidth, HalfHeight, HalfDepth, CornerDistance);
-
-									/*DrawDebugBox(
-										World,
-										BoxCenter,
-										Extent,
-										BoxRotation,
-										FColor::Red,
-										false,    // bPersistentLines
-										100.0f,   // LifeTime
-										SDPG_Foreground, // DepthPriority — draw on top so scene geometry doesn't occlude the lines in perspective views
-										0.0f      // Thickness (line thickness for visibility)
-									);*/
+									DrawDebugBox(World, BoxCenter, Extent, BoxRotation, FColor::Red, false, 100.0f, SDPG_Foreground, 0.0f);
 								}
 							}
-						}
+						}*/
 
 						if (!Selected.IsEmpty())
 						{
@@ -698,7 +697,7 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 							{
 								if (IsValid(Sel.Key) && IsValid(Aggregate))
 								{
-									UE_LOG(LogSeamlessInstancing, Log, TEXT("FindSelectionInstances BreakInstance: %d"), Sel.Value);
+									//UE_LOG(LogSeamlessInstancing, Log, TEXT("FindSelectionInstances BreakInstance: %d"), Sel.Value);
 									BreakInstance(Sel.Key, Sel.Value);
 								}
 							}
