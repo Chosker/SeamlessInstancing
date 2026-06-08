@@ -3,6 +3,7 @@
 #include "SeamlessInstancingStyle.h"
 
 #include "Styling/SlateStyleRegistry.h"
+#include "Styling/AppStyle.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/Paths.h"
 
@@ -23,10 +24,19 @@ void FSeamlessInstancingStyle::Initialize()
 	);
 	StyleInstance->SetContentRoot(ResourceDir);
 
-	StyleInstance->Set("SeamlessInstancing.ToolbarIcon", new FSlateImageBrush(
-		ResourceDir / TEXT("Icon128.png"),
-		FVector2D(128.0f, 128.0f)
-	));
+	// Use the engine's InstancedStaticMeshComponent icon from Starship
+	const FSlateBrush* IsmcBrush = FAppStyle::GetBrush("ClassIcon.InstancedStaticMeshComponent");
+	if (IsmcBrush)
+	{
+		StyleInstance->Set("SeamlessInstancing.ToolbarIcon", new FSlateBrush(*IsmcBrush));
+	}
+	else
+	{
+		StyleInstance->Set("SeamlessInstancing.ToolbarIcon", new FSlateImageBrush(
+			ResourceDir / TEXT("Icon128.png"),
+			FVector2D(128.0f, 128.0f)
+		));
+	}
 
 	FSlateStyleRegistry::RegisterSlateStyle(*StyleInstance);
 }
