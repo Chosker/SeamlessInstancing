@@ -419,6 +419,7 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 	{
 		USceneComponent* Root = NewObject<USceneComponent>(AggregateActor);
 		Root->SetFlags(RF_Transactional);
+		Root->CreationMethod = EComponentCreationMethod::Instance;
 		AggregateActor->SetRootComponent(Root);
 		Root->RegisterComponent();
 	}
