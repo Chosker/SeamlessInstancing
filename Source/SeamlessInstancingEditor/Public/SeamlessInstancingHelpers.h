@@ -49,11 +49,14 @@ TArray<FProperty*> GatherProperties();
 /** Hash all data property values on a component */
 uint32 HashComponentProperties(UStaticMeshComponent* Component, const TArray<FProperty*>& Properties);
 
+/** Copy all included properties from Source onto Target using the pre-gathered property list */
+void CopyRelevantProperties(UStaticMeshComponent* Source, UStaticMeshComponent* Target, const TArray<FProperty*>& Properties);
+
 /** Find the ISM instance under the cursor via viewport hit-proxy system */
 bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedStaticMeshComponent*& OutISMC);
 
 /** Convert a single ISM instance to a StaticMeshActor and select it */
-void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex);
+void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, bool bBeginTransaction = true);
 
 /** Find all ISM instances on Aggregate whose hit-proxy screen bounds intersect the rect */
 TArray<TPair<UInstancedStaticMeshComponent*, int32>> FindSelectionInstances(FViewport* Viewport, AActor* Aggregate, const FIntRect& SelectionRect);

@@ -168,6 +168,18 @@ uint32 HashComponentProperties(UStaticMeshComponent* Component, const TArray<FPr
 	return FCrc::MemCrc32(Ar.GetData(), Ar.Num());
 }
 
+void CopyRelevantProperties(UStaticMeshComponent* Source, UStaticMeshComponent* Target, const TArray<FProperty*>& Properties)
+{
+	for (FProperty* Prop : Properties)
+	{
+		if (!ShouldInclude(Prop))
+		{
+			continue;
+		}
+		Prop->CopyCompleteValue_InContainer(Target, Source);
+	}
+}
+
 // ============================================================================
 // Selection helpers
 // ============================================================================
@@ -216,7 +228,7 @@ bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedS
 	return true;
 }
 
-void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
+void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, bool bBeginTransaction)
 {
 	if (!ISMC || InstanceIndex < 0 || InstanceIndex >= ISMC->GetInstanceCount())
 	{
@@ -250,7 +262,10 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
 		GEditor->SelectActor(Aggregate, /*bSelected=*/false, /*bNotify=*/true);
 	}
 
-	GEditor->BeginTransaction(LOCTEXT("BreakInstance", "Break Instance"));
+	if (bBeginTransaction)
+	{
+		GEditor->BeginTransaction(LOCTEXT("BreakInstance", "Break Instance"));
+	}
 
 	AStaticMeshActor* NewSMActor = World->SpawnActor<AStaticMeshActor>();
 	NewSMActor->SetActorTransform(InstanceTransform);
@@ -278,15 +293,7 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
 	}
 	NewSMActor->SetActorLabel(FinalLabel);
 
-	// Copy included properties from ISMC onto the new SMC
-	for (FProperty* Prop : RelevantProperties)
-	{
-		if (!ShouldInclude(Prop))
-		{
-			continue;
-		}
-		Prop->CopyCompleteValue_InContainer(NewSMC, ISMC);
-	}
+	CopyRelevantProperties(ISMC, NewSMC, RelevantProperties);
 
 	// Copy PerInstanceCustomData from the ISMC onto the new SMC's CustomPrimitiveData
 	if (ISMC->NumCustomDataFloats > 0 && InstanceIndex * ISMC->NumCustomDataFloats < ISMC->PerInstanceSMCustomData.Num())
@@ -319,7 +326,10 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
 		}
 	}
 
-	GEditor->EndTransaction();
+	if (bBeginTransaction)
+	{
+		GEditor->EndTransaction();
+	}
 	// Refresh the World Outliner
 	GEditor->BroadcastLevelActorListChanged();
 

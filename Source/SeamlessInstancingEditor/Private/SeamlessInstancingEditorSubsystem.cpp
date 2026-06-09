@@ -239,14 +239,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			ISMC->RegisterComponent();
 
 			// Copy all included properties from source SMC onto the new ISMC
-			for (FProperty* Prop : RelevantProperties)
-			{
-				if (!ShouldInclude(Prop))
-				{
-					continue;
-				}
-				Prop->CopyCompleteValue_InContainer(ISMC, SMC);
-			}
+			CopyRelevantProperties(SMC, ISMC, RelevantProperties);
 
 			// Restore bHasPerInstanceHitProxies as it has been overwritten
 			ISMC->bHasPerInstanceHitProxies = true;
@@ -360,93 +353,40 @@ void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActo
 		return;
 	}
 
-	const TArray<FProperty*> RelevantProperties = GatherProperties();
-
-	// Collect existing actor labels so we can make unique names
-	TSet<FString> ExistingLabels;
-	for (TActorIterator<AActor> It(World); It; ++It)
-	{
-		ExistingLabels.Add(It->GetActorLabel());
-	}
-
 	GEditor->BeginTransaction(LOCTEXT("ConvertInstancedToSM", "Convert Instanced to SM Actors"));
 
-	TArray<AActor*> AggregatesToDestroy;
 	for (AActor* Aggregate : AggregatesToConvert)
 	{
+		if (!IsValid(Aggregate))
+		{
+			continue;
+		}
+
 		TArray<UInstancedStaticMeshComponent*> ISMCs;
 		Aggregate->GetComponents(ISMCs);
 
 		for (UInstancedStaticMeshComponent* ISMC : ISMCs)
 		{
+			if (!IsValid(ISMC))
+			{
+				continue;
+			}
 			UStaticMesh* Mesh = ISMC->GetStaticMesh();
 			if (!Mesh)
 			{
 				continue;
 			}
 
+			// Break instances in reverse order so removal doesn't invalidate indices
 			const int32 NumInstances = ISMC->GetInstanceCount();
-			for (int32 i = 0; i < NumInstances; ++i)
+			for (int32 i = NumInstances - 1; i >= 0; --i)
 			{
-				FTransform InstanceTransform;
-				if (!ISMC->GetInstanceTransform(i, InstanceTransform, /*bWorldSpace=*/true))
-				{
-					continue;
-				}
-
-				AStaticMeshActor* SMActor = World->SpawnActor<AStaticMeshActor>();
-				SMActor->SetActorTransform(InstanceTransform);
-				UStaticMeshComponent* NewSMC = SMActor->GetStaticMeshComponent();
-				NewSMC->SetStaticMesh(Mesh);
-
-				// Set the actor label to the mesh name (made unique)
-				{
-					FString BaseLabel = Mesh->GetName();
-					FString FinalLabel = BaseLabel;
-					int32 Suffix = 1;
-					while (ExistingLabels.Contains(FinalLabel))
-					{
-						FinalLabel = FString::Printf(TEXT("%s_%d"), *BaseLabel, Suffix++);
-					}
-					SMActor->SetActorLabel(FinalLabel);
-					ExistingLabels.Add(FinalLabel);
-				}
-
-				SMActor->Modify();
-
-				// Copy included properties from the ISMC onto the new SMC
-				for (FProperty* Prop : RelevantProperties)
-				{
-					if (!ShouldInclude(Prop))
-					{
-						continue;
-					}
-					Prop->CopyCompleteValue_InContainer(NewSMC, ISMC);
-				}
-
-				// Copy PerInstanceCustomData from the ISMC onto the new SMC's CustomPrimitiveData
-				if (ISMC->NumCustomDataFloats > 0)
-				{
-					const float* InstanceDataStart = &ISMC->PerInstanceSMCustomData[i * ISMC->NumCustomDataFloats];
-					NewSMC->SetDefaultCustomPrimitiveDataFloatArray(0, MakeConstArrayView(InstanceDataStart, ISMC->NumCustomDataFloats));
-				}
-
-				NewSMC->MarkRenderStateDirty();
+				BreakInstance(ISMC, i, /*bBeginTransaction=*/false);
 			}
 		}
-
-		AggregatesToDestroy.Add(Aggregate);
-	}
-
-	for (AActor* Aggregate : AggregatesToDestroy)
-	{
-		World->DestroyActor(Aggregate);
 	}
 
 	GEditor->EndTransaction();
-
-	// Refresh the World Outliner
-	GEditor->BroadcastLevelActorListChanged();
 }
 
 void USeamlessInstancingEditorSubsystem::SetSeamlessEnabled(bool bEnabled)
