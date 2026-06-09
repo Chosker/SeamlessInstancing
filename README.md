@@ -16,6 +16,7 @@ Enjoy lightweight levels with instancing, with the proper UX of manipulating reg
 - Supports World Partition levels (instances are grouped per WP tile)
 - Works on perspective and ortho viewports
 - Works with pick-based selection and selection box
+- Converts CustomPrimitiveData into PerInstanceCustomData and back
 
 ### Caveats and Considerations
 - Makes Actor Groups unusable. Needs some thinking on how they could be made to work
