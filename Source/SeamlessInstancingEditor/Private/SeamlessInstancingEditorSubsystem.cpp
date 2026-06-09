@@ -255,7 +255,50 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			ISMC->ComponentTags.Add(FName(*FString::Printf(TEXT("SrcHash_%u"), InstanceKey.PropertiesHash)));
 		}
 
-		ISMC->AddInstance(SMActor->GetTransform(), /*bWorldSpace=*/true);
+		const int32 NewInstanceIndex = ISMC->AddInstance(SMActor->GetTransform(), /*bWorldSpace=*/true);
+
+		// Transfer the source SMC's CustomPrimitiveData to PerInstanceCustomData on the ISM
+		const TArray<float>& SrcCustomData = SMC->GetCustomPrimitiveData().Data;
+		const int32 NumSrcFloats = SrcCustomData.Num();
+		if (NumSrcFloats > 0)
+		{
+			if (NumSrcFloats > ISMC->NumCustomDataFloats)
+			{
+				// If the new instance has more CustomData floats than the current stride expand NumCustomDataFloats and re-layout existing PerInstanceData
+				const int32 OldNumFloats = ISMC->NumCustomDataFloats;
+				const int32 NewNumFloats = NumSrcFloats;
+				const int32 NumExistingInstances = ISMC->GetInstanceCount() - 1;
+
+				TArray<float> ExpandedData;
+				ExpandedData.SetNum(NewNumFloats * ISMC->GetInstanceCount());
+				for (int32 InstIdx = 0; InstIdx < NumExistingInstances; ++InstIdx)
+				{
+					FMemory::Memcpy(
+						&ExpandedData[InstIdx * NewNumFloats],
+						&ISMC->PerInstanceSMCustomData[InstIdx * OldNumFloats],
+						OldNumFloats * sizeof(float)
+					);
+				}
+				ISMC->PerInstanceSMCustomData = MoveTemp(ExpandedData);
+				ISMC->NumCustomDataFloats = NewNumFloats;
+			}
+			else
+			{
+				// Same or fewer floats: ensure the array has room for the new instance
+				if (ISMC->NumCustomDataFloats == 0)
+				{
+					ISMC->NumCustomDataFloats = NumSrcFloats;
+				}
+				const int32 RequiredSize = ISMC->NumCustomDataFloats * ISMC->GetInstanceCount();
+				if (ISMC->PerInstanceSMCustomData.Num() < RequiredSize)
+				{
+					ISMC->PerInstanceSMCustomData.AddZeroed(RequiredSize - ISMC->PerInstanceSMCustomData.Num());
+				}
+			}
+
+			const int32 DataCount = FMath::Min(NumSrcFloats, ISMC->NumCustomDataFloats);
+			ISMC->SetCustomData(NewInstanceIndex, TArrayView<const float>(SrcCustomData.GetData(), DataCount), false);
+		}
 		ActorsToDestroy.Add(SMActor);
 	}
 
@@ -373,6 +416,13 @@ void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActo
 						continue;
 					}
 					Prop->CopyCompleteValue_InContainer(NewSMC, ISMC);
+				}
+
+				// Copy PerInstanceCustomData from the ISMC onto the new SMC's CustomPrimitiveData
+				if (ISMC->NumCustomDataFloats > 0)
+				{
+					const float* InstanceDataStart = &ISMC->PerInstanceSMCustomData[i * ISMC->NumCustomDataFloats];
+					NewSMC->SetDefaultCustomPrimitiveDataFloatArray(0, MakeConstArrayView(InstanceDataStart, ISMC->NumCustomDataFloats));
 				}
 
 				NewSMC->MarkRenderStateDirty();

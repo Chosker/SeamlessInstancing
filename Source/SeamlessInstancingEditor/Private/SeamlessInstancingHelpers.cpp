@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "SeamlessInstancingHelpers.h"
 #include "SeamlessInstancingEditorModule.h"
@@ -69,6 +69,7 @@ bool ShouldInclude(const FProperty* Prop)
 		                                     // lives here and would cause hash mismatches if included,
 		                                     // and two identical components with different tags should
 		                                     // still merge into the same ISM group
+		TEXT("CustomPrimitiveData"),         // transferred explicitly as per-instance custom data
 	};
 	if (SkipNames.Contains(Prop->GetFName()))
 	{
@@ -287,6 +288,13 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
 			continue;
 		}
 		Prop->CopyCompleteValue_InContainer(NewSMC, ISMC);
+	}
+
+	// Copy PerInstanceCustomData from the ISMC onto the new SMC's CustomPrimitiveData
+	if (ISMC->NumCustomDataFloats > 0 && InstanceIndex * ISMC->NumCustomDataFloats < ISMC->PerInstanceSMCustomData.Num())
+	{
+		const float* InstanceDataStart = &ISMC->PerInstanceSMCustomData[InstanceIndex * ISMC->NumCustomDataFloats];
+		NewSMC->SetDefaultCustomPrimitiveDataFloatArray(0, MakeConstArrayView(InstanceDataStart, ISMC->NumCustomDataFloats));
 	}
 
 	NewSMC->MarkRenderStateDirty();
