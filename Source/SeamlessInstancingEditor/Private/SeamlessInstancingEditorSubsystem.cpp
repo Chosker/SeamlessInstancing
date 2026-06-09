@@ -255,6 +255,12 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			ISMC->ComponentTags.Add(FName(*FString::Printf(TEXT("SrcHash_%u"), InstanceKey.PropertiesHash)));
 		}
 
+		// Safeguard to ensure correct Static Mobility
+		if (ISMC->Mobility != EComponentMobility::Static)
+		{
+			ISMC->SetMobility(EComponentMobility::Static);
+		}
+
 		const int32 NewInstanceIndex = ISMC->AddInstance(SMActor->GetTransform(), /*bWorldSpace=*/true);
 
 		// Transfer the source SMC's CustomPrimitiveData to PerInstanceCustomData on the ISM

@@ -260,25 +260,23 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
 	NewSMC->SetStaticMesh(Mesh);
 
 	// Set the actor label to the mesh name (made unique across all actors in the world)
+	TSet<FString> ExistingLabels;
+	for (TActorIterator<AActor> It(World); It; ++It)
 	{
-		TSet<FString> ExistingLabels;
-		for (TActorIterator<AActor> It(World); It; ++It)
+		if (*It != NewSMActor)
 		{
-			if (*It != NewSMActor)
-			{
-				ExistingLabels.Add(It->GetActorLabel());
-			}
+			ExistingLabels.Add(It->GetActorLabel());
 		}
-
-		FString BaseLabel = Mesh->GetName();
-		FString FinalLabel = BaseLabel;
-		int32 Suffix = 1;
-		while (ExistingLabels.Contains(FinalLabel))
-		{
-			FinalLabel = FString::Printf(TEXT("%s_%d"), *BaseLabel, Suffix++);
-		}
-		NewSMActor->SetActorLabel(FinalLabel);
 	}
+
+	FString BaseLabel = Mesh->GetName();
+	FString FinalLabel = BaseLabel;
+	int32 Suffix = 1;
+	while (ExistingLabels.Contains(FinalLabel))
+	{
+		FinalLabel = FString::Printf(TEXT("%s_%d"), *BaseLabel, Suffix++);
+	}
+	NewSMActor->SetActorLabel(FinalLabel);
 
 	// Copy included properties from ISMC onto the new SMC
 	for (FProperty* Prop : RelevantProperties)
@@ -295,6 +293,12 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex)
 	{
 		const float* InstanceDataStart = &ISMC->PerInstanceSMCustomData[InstanceIndex * ISMC->NumCustomDataFloats];
 		NewSMC->SetDefaultCustomPrimitiveDataFloatArray(0, MakeConstArrayView(InstanceDataStart, ISMC->NumCustomDataFloats));
+	}
+
+	// Safeguard to ensure correct Static Mobility
+	if (NewSMC->Mobility != EComponentMobility::Static)
+	{
+		NewSMC->SetMobility(EComponentMobility::Static);
 	}
 
 	NewSMC->MarkRenderStateDirty();
@@ -397,16 +401,24 @@ int32 GetWorldPartitionCellSize(const UWorldPartitionEditorSpatialHash* SpatialH
 
 AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel)
 {
+	AActor* AggregateActor = nullptr;
+
 	// Lookup via the pre-built map
 	if (const AActor* const* Found = ExistingByLabel.Find(Label))
 	{
-		return const_cast<AActor*>(*Found);
+		AggregateActor = const_cast<AActor*>(*Found);
+		// Safeguard to ensure correct Static Mobility
+		if (AggregateActor->GetRootComponent()->Mobility != EComponentMobility::Static)
+		{
+			AggregateActor->GetRootComponent()->SetMobility(EComponentMobility::Static);
+		}
+		return AggregateActor;
 	}
 
 	// Create a new one
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.bCreateActorPackage = (World->GetWorldPartition() != nullptr);
-	AActor* AggregateActor = World->SpawnActor<AActor>(SpawnParams);
+	AggregateActor = World->SpawnActor<AActor>(SpawnParams);
 	AggregateActor->SetActorLabel(Label);
 	AggregateActor->Tags.AddUnique(TEXT("SeamlessInstanceActor"));
 
@@ -428,6 +440,7 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 		USceneComponent* Root = NewObject<USceneComponent>(AggregateActor);
 		Root->SetFlags(RF_Transactional);
 		Root->CreationMethod = EComponentCreationMethod::Instance;
+		Root->Mobility = EComponentMobility::Static;
 		AggregateActor->SetRootComponent(Root);
 		Root->RegisterComponent();
 	}
