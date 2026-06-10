@@ -308,6 +308,18 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, boo
 		NewSMC->SetMobility(EComponentMobility::Static);
 	}
 
+	// Assign the same data layers as the aggregate
+	for (const UDataLayerAsset* DL : Aggregate->GetDataLayerAssets())
+	{
+		if (UDataLayerManager* DLMgr = World->GetDataLayerManager())
+		{
+			if (const UDataLayerInstance* DLInstance = DLMgr->GetDataLayerInstanceFromAsset(DL))
+			{
+				DLInstance->AddActor(NewSMActor);
+			}
+		}
+	}
+
 	NewSMC->MarkRenderStateDirty();
 
 	// Remove the instance from the ISMC
@@ -422,7 +434,27 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 		{
 			AggregateActor->GetRootComponent()->SetMobility(EComponentMobility::Static);
 		}
-		return AggregateActor;
+
+		// Verify that data layers match, otherwise create a new Aggregate
+		const TArray<const UDataLayerAsset*> CurrentLayers = AggregateActor->GetDataLayerAssets();
+		bool bDataLayersMatch = (CurrentLayers.Num() == DataLayers.Num());
+		if (bDataLayersMatch)
+		{
+			for (const UDataLayerAsset* DL : DataLayers)
+			{
+				if (!CurrentLayers.Contains(DL))
+				{
+					bDataLayersMatch = false;
+					break;
+				}
+			}
+		}
+		if (bDataLayersMatch)
+		{
+			return AggregateActor;
+		}
+
+		AggregateActor = nullptr;
 	}
 
 	// Create a new one

@@ -187,7 +187,12 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 	if (!bUseCellGrouping)
 	{
 		// Single aggregate for non-WP or non-streaming worlds
-		AActor* SingleActor = FindOrCreateAggregateActor(World, TEXT("SeamlessInstanceActor"), {}, ExistingAggregateActors);
+		TSet<const UDataLayerAsset*> AllDataLayers;
+		for (const AStaticMeshActor* SMActor : ActorsToConvert)
+		{
+			AllDataLayers.Append(SMActor->GetDataLayerAssets());
+		}
+		AActor* SingleActor = FindOrCreateAggregateActor(World, TEXT("SeamlessInstanceActor"), AllDataLayers.Array(), ExistingAggregateActors);
 		CellToAggregate.Add(FCachedCellCoord{0, 0}, SingleActor);
 	}
 
