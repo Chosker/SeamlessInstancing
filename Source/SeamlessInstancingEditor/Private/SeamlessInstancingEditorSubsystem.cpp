@@ -149,8 +149,9 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 	// Check whether to split by WP cell and get cell size
 	bool bUseCellGrouping = false;
 	UWorldPartitionEditorSpatialHash* EditorSpatialHash = nullptr;
-	TMap<FString, AActor*> CellToAggregate;
+	TMultiMap<FString, AActor*> CellToAggregate;
 	TMap<AStaticMeshActor*, FString> ActorToCell;
+	TMap<AStaticMeshActor*, AActor*> ActorToAggregate;
 
 	if (UWorldPartition* WorldPartition = World->GetWorldPartition())
 	{
@@ -161,7 +162,6 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			{
 				bUseCellGrouping = true;
 				const int32 CellSize = GetWorldPartitionCellSize(EditorSpatialHash);
-
 				for (AStaticMeshActor* SMActor : ActorsToConvert)
 				{
 					UWorldPartitionEditorSpatialHash::FCellCoord Cell = EditorSpatialHash->GetCellCoords(SMActor->GetActorLocation(), 0);
@@ -179,14 +179,46 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 					}
 					ActorToCell.Add(SMActor, Label);
 
-					AActor*& Found = CellToAggregate.FindOrAdd(Label);
-					if (!Found)
+					const TArray<const UDataLayerAsset*> SrcDLs = SMActor->GetDataLayerAssets();
+
+					// Look for an existing aggregate in this cell with matching data layers
+					AActor* InstancedActor = nullptr;
 					{
-						Found = FindOrCreateAggregateActor(World, Label, SMActor->GetDataLayerAssets(), ExistingAggregateActors, RuntimeGrid);
+						TArray<AActor*> CellAggs;
+						CellToAggregate.MultiFind(Label, CellAggs);
+						for (AActor* Agg : CellAggs)
+						{
+							const TArray<const UDataLayerAsset*> AggDLs = Agg->GetDataLayerAssets();
+							if (AggDLs.Num() == SrcDLs.Num())
+							{
+								bool bMatch = true;
+								for (const UDataLayerAsset* DL : SrcDLs)
+								{
+									if (!AggDLs.Contains(DL))
+									{
+										bMatch = false;
+										break;
+									}
+								}
+								if (bMatch)
+								{
+									InstancedActor = Agg;
+									break;
+								}
+							}
+						}
+					}
+
+					if (!InstancedActor)
+					{
+						InstancedActor = FindOrCreateAggregateActor(World, Label, SrcDLs, ExistingAggregateActors, RuntimeGrid, SMActor->GetLevel());
 
 						// Center aggregate on its WP tile
-						Found->SetActorLocation(FVector(double(Cell.X) * CellSize + CellSize * 0.5, double(Cell.Y) * CellSize + CellSize * 0.5, 0.0));
+						InstancedActor->SetActorLocation(FVector(double(Cell.X) * CellSize + CellSize * 0.5, double(Cell.Y) * CellSize + CellSize * 0.5, 0.0));
+
+						CellToAggregate.Add(Label, InstancedActor);
 					}
+					ActorToAggregate.Add(SMActor, InstancedActor);
 				}
 			}
 		}
@@ -194,14 +226,72 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 	if (!bUseCellGrouping)
 	{
-		// Single aggregate for non-WP or non-streaming worlds
-		TSet<const UDataLayerAsset*> AllDataLayers;
-		for (const AStaticMeshActor* SMActor : ActorsToConvert)
+		// Build a level-indexed multi-map of existing aggregates
+		TMap<ULevel*, TArray<AActor*>> AggregatesByLevel;
+		for (TActorIterator<AActor> It(World); It; ++It)
 		{
-			AllDataLayers.Append(SMActor->GetDataLayerAssets());
+			if (It->Tags.Contains(TEXT("SeamlessInstanceActor")))
+			{
+				if (ULevel* L = It->GetLevel())
+				{
+					AggregatesByLevel.FindOrAdd(L).Add(*It);
+				}
+			}
 		}
-		AActor* SingleActor = FindOrCreateAggregateActor(World, TEXT("InstancedActor"), AllDataLayers.Array(), ExistingAggregateActors);
-		CellToAggregate.Add(TEXT("Default"), SingleActor);
+
+		// For each actor find an existing aggregate in its level with matching data layers, or create one
+		for (AStaticMeshActor* SMActor : ActorsToConvert)
+		{
+			ULevel* ActorLevel = SMActor->GetLevel();
+			if (!ActorLevel || ActorToAggregate.Contains(SMActor))
+			{
+				continue;
+			}
+
+			const TArray<const UDataLayerAsset*> SrcDataLayers = SMActor->GetDataLayerAssets();
+
+			// Find an existing aggregate in the same level with matching data layers
+			AActor* InstancedActor = nullptr;
+			if (TArray<AActor*>* LevelAggs = AggregatesByLevel.Find(ActorLevel))
+			{
+				for (AActor* Agg : *LevelAggs)
+				{
+					const TArray<const UDataLayerAsset*> AggLayers = Agg->GetDataLayerAssets();
+					if (AggLayers.Num() == SrcDataLayers.Num())
+					{
+						bool bMatch = true;
+						for (const UDataLayerAsset* DL : SrcDataLayers)
+						{
+							if (!AggLayers.Contains(DL))
+							{
+								bMatch = false;
+								break;
+							}
+						}
+						if (bMatch)
+						{
+							InstancedActor = Agg;
+							break;
+						}
+					}
+				}
+			}
+
+			if (InstancedActor)
+			{
+				ActorToAggregate.Add(SMActor, InstancedActor);
+			}
+			else
+			{
+				// Pass an empty existing map so FindOrCreateAggregateActor doesn't match an aggregate from a different level
+				TArray<const UDataLayerAsset*> AllLevelDataLayers = SrcDataLayers;
+				TMap<FString, AActor*> NoExisting;
+				AActor* NewAggregate = FindOrCreateAggregateActor(World, TEXT("InstancedActor"), AllLevelDataLayers, NoExisting, NAME_None, ActorLevel);
+				ActorToAggregate.Add(SMActor, NewAggregate);
+				// Register the new aggregate so subsequent actors in the same level + data layers find it
+				AggregatesByLevel.FindOrAdd(ActorLevel).Add(NewAggregate);
+			}
+		}
 	}
 
 	TArray<AActor*> ActorsToDestroy;
@@ -209,8 +299,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 	for (AStaticMeshActor* SMActor : ActorsToConvert)
 	{
-		const FString CellKey = bUseCellGrouping ? ActorToCell[SMActor] : FString(TEXT("Default"));
-		AActor* AggregateActor = CellToAggregate[CellKey];
+		AActor* AggregateActor = ActorToAggregate[SMActor];
 
 		if (SMActor == AggregateActor)
 		{

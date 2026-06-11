@@ -6,6 +6,7 @@
 
 class AActor;
 class UInstancedStaticMeshComponent;
+class ULevel;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UWorld;
@@ -67,4 +68,4 @@ TArray<TPair<UInstancedStaticMeshComponent*, int32>> FindSelectionInstances(FVie
 int32 GetWorldPartitionCellSize(const UWorldPartitionEditorSpatialHash* SpatialHash);
 
 /** Finds an existing aggregate actor for the given label or creates one */
-AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel, FName RuntimeGrid = NAME_None);
+AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel, FName RuntimeGrid = NAME_None, ULevel* OverrideLevel = nullptr);

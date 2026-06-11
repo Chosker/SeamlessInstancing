@@ -267,7 +267,10 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, boo
 		GEditor->BeginTransaction(LOCTEXT("BreakInstance", "Break Instance"));
 	}
 
-	AStaticMeshActor* NewSMActor = World->SpawnActor<AStaticMeshActor>();
+	// Spawn the new SM actor in the same sublevel as the aggregate
+	FActorSpawnParameters BreakSpawnParams;
+	BreakSpawnParams.OverrideLevel = Aggregate->GetLevel();
+	AStaticMeshActor* NewSMActor = World->SpawnActor<AStaticMeshActor>(BreakSpawnParams);
 	NewSMActor->SetActorTransform(InstanceTransform);
 	NewSMActor->Modify();
 
@@ -331,7 +334,7 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, boo
 
 	NewSMC->MarkRenderStateDirty();
 
-	// Remove the instance from the ISMC
+	// Detach the instance from the ISMC
 	ISMC->RemoveInstance(InstanceIndex);
 
 	// Clean up empty ISMCs and if needed, the aggregate itself
@@ -387,24 +390,24 @@ TArray<TPair<UInstancedStaticMeshComponent*, int32>> FindSelectionInstances(FVie
 
 	Viewport->EnumerateHitProxiesInRect(SelectionRect,
 		[&Out, Aggregate, &Seen](HHitProxy* HitProxy) -> bool
+	{
+		if (HitProxy && HitProxy->IsA(HInstancedStaticMeshInstance::StaticGetType()))
 		{
-			if (HitProxy && HitProxy->IsA(HInstancedStaticMeshInstance::StaticGetType()))
+			const HInstancedStaticMeshInstance* ISMH = static_cast<const HInstancedStaticMeshInstance*>(HitProxy);
+			UInstancedStaticMeshComponent* ISMC = ISMH ? ISMH->Component : nullptr;
+			if (ISMC && ISMC->GetOwner() == Aggregate)
 			{
-				const HInstancedStaticMeshInstance* ISMH = static_cast<const HInstancedStaticMeshInstance*>(HitProxy);
-				UInstancedStaticMeshComponent* ISMC = ISMH ? ISMH->Component : nullptr;
-				if (ISMC && ISMC->GetOwner() == Aggregate)
+				const TPair<UInstancedStaticMeshComponent*, int32> Key(ISMC, ISMH->InstanceIndex);
+				bool bAlreadyInSet = false;
+				Seen.Add(Key, &bAlreadyInSet);
+				if (!bAlreadyInSet)
 				{
-					const TPair<UInstancedStaticMeshComponent*, int32> Key(ISMC, ISMH->InstanceIndex);
-					bool bAlreadyInSet = false;
-					Seen.Add(Key, &bAlreadyInSet);
-					if (!bAlreadyInSet)
-					{
-						Out.Emplace(ISMC, ISMH->InstanceIndex);
-					}
+					Out.Emplace(ISMC, ISMH->InstanceIndex);
 				}
 			}
-			return true; // keep iterating
-		});
+		}
+		return true; // keep iterating
+	});
 
 	return Out;
 }
@@ -430,7 +433,7 @@ int32 GetWorldPartitionCellSize(const UWorldPartitionEditorSpatialHash* SpatialH
 	return CellSizeProp->GetPropertyValue(CellSizeProp->ContainerPtrToValuePtr<int32>(SpatialHash));
 }
 
-AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel, FName RuntimeGrid)
+AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel, FName RuntimeGrid, ULevel* OverrideLevel)
 {
 	AActor* AggregateActor = nullptr;
 
@@ -470,9 +473,10 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 		AggregateActor = nullptr;
 	}
 
-	// Create a new one
+	// Create a new one in the same sublevel as the source actor
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.bCreateActorPackage = (World->GetWorldPartition() != nullptr);
+	SpawnParams.OverrideLevel = OverrideLevel;
 	AggregateActor = World->SpawnActor<AActor>(SpawnParams);
 	AggregateActor->SetActorLabel(Label);
 	AggregateActor->Tags.AddUnique(TEXT("SeamlessInstanceActor"));
