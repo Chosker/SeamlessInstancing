@@ -239,7 +239,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			}
 		}
 
-		// For each actor find an existing aggregate in its level with matching data layers, or create one
+		// For each actor find an existing aggregate in its level with matching data layers and actor layers, or create one
 		for (AStaticMeshActor* SMActor : ActorsToConvert)
 		{
 			ULevel* ActorLevel = SMActor->GetLevel();
@@ -249,31 +249,44 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			}
 
 			const TArray<const UDataLayerAsset*> SrcDataLayers = SMActor->GetDataLayerAssets();
+			const TArray<FName> SrcActorLayers = SMActor->Layers;
 
-			// Find an existing aggregate in the same level with matching data layers
+			// Find an existing aggregate in the same level with matching data layers and actor layers
 			AActor* InstancedActor = nullptr;
 			if (TArray<AActor*>* LevelAggs = AggregatesByLevel.Find(ActorLevel))
 			{
 				for (AActor* Agg : *LevelAggs)
 				{
-					const TArray<const UDataLayerAsset*> AggLayers = Agg->GetDataLayerAssets();
-					if (AggLayers.Num() == SrcDataLayers.Num())
+					// Check data layers match
+					const TArray<const UDataLayerAsset*> AggDataLayers = Agg->GetDataLayerAssets();
+					if (AggDataLayers.Num() != SrcDataLayers.Num()) { continue; }
+					bool bDataMatch = true;
+					for (const UDataLayerAsset* DL : SrcDataLayers)
 					{
-						bool bMatch = true;
-						for (const UDataLayerAsset* DL : SrcDataLayers)
+						if (!AggDataLayers.Contains(DL))
 						{
-							if (!AggLayers.Contains(DL))
-							{
-								bMatch = false;
-								break;
-							}
-						}
-						if (bMatch)
-						{
-							InstancedActor = Agg;
+							bDataMatch = false;
 							break;
 						}
 					}
+					if (!bDataMatch) { continue; }
+
+					// Check actor layers match
+					const TArray<FName> AggActorLayers = Agg->Layers;
+					if (AggActorLayers.Num() != SrcActorLayers.Num()) { continue; }
+					bool bLayerMatch = true;
+					for (const FName& Layer : SrcActorLayers)
+					{
+						if (!AggActorLayers.Contains(Layer))
+						{
+							bLayerMatch = false;
+							break;
+						}
+					}
+					if (!bLayerMatch) { continue; }
+
+					InstancedActor = Agg;
+					break;
 				}
 			}
 
@@ -287,8 +300,10 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 				TArray<const UDataLayerAsset*> AllLevelDataLayers = SrcDataLayers;
 				TMap<FString, AActor*> NoExisting;
 				AActor* NewAggregate = FindOrCreateAggregateActor(World, TEXT("InstancedActor"), AllLevelDataLayers, NoExisting, NAME_None, ActorLevel);
+				// Copy actor layers from source so future lookups match
+				NewAggregate->Layers = SrcActorLayers;
 				ActorToAggregate.Add(SMActor, NewAggregate);
-				// Register the new aggregate so subsequent actors in the same level + data layers find it
+				// Register the new aggregate so subsequent actors in the same level + matching layers find it
 				AggregatesByLevel.FindOrAdd(ActorLevel).Add(NewAggregate);
 			}
 		}

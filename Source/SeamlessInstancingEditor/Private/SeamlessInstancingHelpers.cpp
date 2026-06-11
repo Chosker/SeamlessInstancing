@@ -331,6 +331,8 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, boo
 			NewSMActor->SetRuntimeGrid(AggregateRuntimeGrid);
 		}
 	}
+	// Copy the classic Actor Layers from the aggregate
+	NewSMActor->Layers = Aggregate->Layers;
 
 	NewSMC->MarkRenderStateDirty();
 
