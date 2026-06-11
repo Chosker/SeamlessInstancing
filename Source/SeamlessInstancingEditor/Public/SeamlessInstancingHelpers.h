@@ -63,25 +63,8 @@ TArray<TPair<UInstancedStaticMeshComponent*, int32>> FindSelectionInstances(FVie
 
 // ----- World Partition helpers -------------------------------------------
 
-/** 2D cell coordinate (level 0) used as a map key */
-struct FCachedCellCoord
-{
-	int64 X = 0;
-	int64 Y = 0;
-
-	bool operator==(const FCachedCellCoord& Other) const
-	{
-		return X == Other.X && Y == Other.Y;
-	}
-};
-
-FORCEINLINE uint32 GetTypeHash(const FCachedCellCoord& Key)
-{
-	return HashCombine(GetTypeHash(Key.X), GetTypeHash(Key.Y));
-}
-
 /** Reads the default WP grid cell size from the editor spatial hash. Uses reflection because CellSize is private */
 int32 GetWorldPartitionCellSize(const UWorldPartitionEditorSpatialHash* SpatialHash);
 
 /** Finds an existing aggregate actor for the given label or creates one */
-AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel);
+AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel, FName RuntimeGrid = NAME_None);

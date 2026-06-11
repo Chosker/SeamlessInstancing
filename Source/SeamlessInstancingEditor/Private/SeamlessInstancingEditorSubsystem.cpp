@@ -149,8 +149,8 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 	// Check whether to split by WP cell and get cell size
 	bool bUseCellGrouping = false;
 	UWorldPartitionEditorSpatialHash* EditorSpatialHash = nullptr;
-	TMap<FCachedCellCoord, AActor*> CellToAggregate;
-	TMap<AStaticMeshActor*, FCachedCellCoord> ActorToCell;
+	TMap<FString, AActor*> CellToAggregate;
+	TMap<AStaticMeshActor*, FString> ActorToCell;
 
 	if (UWorldPartition* WorldPartition = World->GetWorldPartition())
 	{
@@ -165,19 +165,27 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 				for (AStaticMeshActor* SMActor : ActorsToConvert)
 				{
 					UWorldPartitionEditorSpatialHash::FCellCoord Cell = EditorSpatialHash->GetCellCoords(SMActor->GetActorLocation(), 0);
-					FCachedCellCoord CacheKey{Cell.X, Cell.Y};
-					ActorToCell.Add(SMActor, CacheKey);
 
-					AActor*& Found = CellToAggregate.FindOrAdd(CacheKey);
+					// Build a label that encodes cell coords and RuntimeGrid
+					FString Label;
+					FName RuntimeGrid = SMActor->GetRuntimeGrid();
+					if (RuntimeGrid != NAME_None)
+					{
+						Label = FString::Printf(TEXT("InstancedActor_%lld_%lld_%s"), Cell.X, Cell.Y, *RuntimeGrid.ToString());
+					}
+					else
+					{
+						Label = FString::Printf(TEXT("InstancedActor_%lld_%lld"), Cell.X, Cell.Y);
+					}
+					ActorToCell.Add(SMActor, Label);
+
+					AActor*& Found = CellToAggregate.FindOrAdd(Label);
 					if (!Found)
 					{
-						FString Label = FString::Printf(TEXT("SeamlessInstanceActor_%lld_%lld"), Cell.X, Cell.Y);
-						Found = FindOrCreateAggregateActor(World, Label, SMActor->GetDataLayerAssets(), ExistingAggregateActors);
+						Found = FindOrCreateAggregateActor(World, Label, SMActor->GetDataLayerAssets(), ExistingAggregateActors, RuntimeGrid);
 
 						// Center aggregate on its WP tile
-						Found->SetActorLocation(FVector(double(Cell.X) * CellSize + CellSize * 0.5,
-														double(Cell.Y) * CellSize + CellSize * 0.5,
-														0.0));
+						Found->SetActorLocation(FVector(double(Cell.X) * CellSize + CellSize * 0.5, double(Cell.Y) * CellSize + CellSize * 0.5, 0.0));
 					}
 				}
 			}
@@ -192,8 +200,8 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 		{
 			AllDataLayers.Append(SMActor->GetDataLayerAssets());
 		}
-		AActor* SingleActor = FindOrCreateAggregateActor(World, TEXT("SeamlessInstanceActor"), AllDataLayers.Array(), ExistingAggregateActors);
-		CellToAggregate.Add(FCachedCellCoord{0, 0}, SingleActor);
+		AActor* SingleActor = FindOrCreateAggregateActor(World, TEXT("InstancedActor"), AllDataLayers.Array(), ExistingAggregateActors);
+		CellToAggregate.Add(TEXT("Default"), SingleActor);
 	}
 
 	TArray<AActor*> ActorsToDestroy;
@@ -201,7 +209,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 	for (AStaticMeshActor* SMActor : ActorsToConvert)
 	{
-		const FCachedCellCoord CellKey = bUseCellGrouping ? ActorToCell[SMActor] : FCachedCellCoord{0, 0};
+		const FString CellKey = bUseCellGrouping ? ActorToCell[SMActor] : FString(TEXT("Default"));
 		AActor* AggregateActor = CellToAggregate[CellKey];
 
 		if (SMActor == AggregateActor)

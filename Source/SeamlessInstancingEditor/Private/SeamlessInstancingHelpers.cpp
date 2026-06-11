@@ -320,6 +320,15 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, boo
 		}
 	}
 
+	// Copy the Runtime Grid from the aggregate
+	{
+		const FName AggregateRuntimeGrid = Aggregate->GetRuntimeGrid();
+		if (AggregateRuntimeGrid != NAME_None)
+		{
+			NewSMActor->SetRuntimeGrid(AggregateRuntimeGrid);
+		}
+	}
+
 	NewSMC->MarkRenderStateDirty();
 
 	// Remove the instance from the ISMC
@@ -421,7 +430,7 @@ int32 GetWorldPartitionCellSize(const UWorldPartitionEditorSpatialHash* SpatialH
 	return CellSizeProp->GetPropertyValue(CellSizeProp->ContainerPtrToValuePtr<int32>(SpatialHash));
 }
 
-AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel)
+AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel, FName RuntimeGrid)
 {
 	AActor* AggregateActor = nullptr;
 
@@ -449,7 +458,11 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 				}
 			}
 		}
-		if (bDataLayersMatch)
+
+		// Verify that RuntimeGrid matches, otherwise create a new Aggregate
+		bool bRuntimeGridMatch = (AggregateActor->GetRuntimeGrid() == RuntimeGrid);
+
+		if (bDataLayersMatch && bRuntimeGridMatch)
 		{
 			return AggregateActor;
 		}
@@ -463,6 +476,12 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 	AggregateActor = World->SpawnActor<AActor>(SpawnParams);
 	AggregateActor->SetActorLabel(Label);
 	AggregateActor->Tags.AddUnique(TEXT("SeamlessInstanceActor"));
+
+	// Assign the Runtime Grid
+	if (RuntimeGrid != NAME_None)
+	{
+		AggregateActor->SetRuntimeGrid(RuntimeGrid);
+	}
 
 	// Assign data layers from the partition key
 	for (const UDataLayerAsset* DL : DataLayers)
