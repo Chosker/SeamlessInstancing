@@ -14,7 +14,7 @@ Enjoy lightweight levels with instancing, with the proper UX of manipulating reg
 - Processes only StaticMeshComponents of StaticMeshActors with Mobility is set to Static, SpatiallyLoaded set to True, and not HiddenInEditor
 - Maintains most StaticMeshComponents' properties (i.e. Material override, collision options, cast shadows, etc) by making different Instanced Components when a different property is needed
 - Supports World Partition levels
-  - Instances are separated per WP tile
+  - Instances are separated per WP tile and per WP runtime grid
   - Instances are separated per each DataLayers combination
 - Works on perspective and ortho viewports
 - Works with pick-based selection and selection box
@@ -25,6 +25,5 @@ Enjoy lightweight levels with instancing, with the proper UX of manipulating reg
 - One File Per Actor granularity is greatly reduced since components are now merged
 
 ### TO DO
-- World Partition levels: different grids
 - Non World Partition levels, sublevels
 - More stuff
