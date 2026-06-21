@@ -211,10 +211,9 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 					if (!InstancedActor)
 					{
-						InstancedActor = FindOrCreateAggregateActor(World, Label, SrcDLs, ExistingAggregateActors, RuntimeGrid, SMActor->GetLevel());
-
 						// Center aggregate on its WP tile
-						InstancedActor->SetActorLocation(FVector(double(Cell.X) * CellSize + CellSize * 0.5, double(Cell.Y) * CellSize + CellSize * 0.5, 0.0));
+						const FVector CellCenter = FVector(double(Cell.X) * CellSize + CellSize * 0.5, double(Cell.Y) * CellSize + CellSize * 0.5, 0.0);
+						InstancedActor = FindOrCreateAggregateActor(World, Label, SrcDLs, ExistingAggregateActors, RuntimeGrid, SMActor->GetLevel(), CellCenter);
 
 						CellToAggregate.Add(Label, InstancedActor);
 					}

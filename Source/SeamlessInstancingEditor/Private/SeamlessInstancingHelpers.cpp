@@ -435,7 +435,7 @@ int32 GetWorldPartitionCellSize(const UWorldPartitionEditorSpatialHash* SpatialH
 	return CellSizeProp->GetPropertyValue(CellSizeProp->ContainerPtrToValuePtr<int32>(SpatialHash));
 }
 
-AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel, FName RuntimeGrid, ULevel* OverrideLevel)
+AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel, FName RuntimeGrid, ULevel* OverrideLevel, const FVector& SpawnLocation)
 {
 	AActor* AggregateActor = nullptr;
 
@@ -479,7 +479,8 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.bCreateActorPackage = (World->GetWorldPartition() != nullptr);
 	SpawnParams.OverrideLevel = OverrideLevel;
-	AggregateActor = World->SpawnActor<AActor>(SpawnParams);
+	FTransform SpawnTransform(SpawnLocation);
+	AggregateActor = World->SpawnActor<AActor>(AActor::StaticClass(), SpawnTransform, SpawnParams);
 	AggregateActor->SetActorLabel(Label);
 	AggregateActor->Tags.AddUnique(TEXT("SeamlessInstanceActor"));
 
