@@ -214,6 +214,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 						// Center aggregate on its WP tile
 						const FVector CellCenter = FVector(double(Cell.X) * CellSize + CellSize * 0.5, double(Cell.Y) * CellSize + CellSize * 0.5, 0.0);
 						InstancedActor = FindOrCreateAggregateActor(World, Label, SrcDLs, ExistingAggregateActors, RuntimeGrid, SMActor->GetLevel(), CellCenter);
+						InstancedActor->SetIsTemporarilyHiddenInEditor(false);
 
 						CellToAggregate.Add(Label, InstancedActor);
 					}
@@ -258,7 +259,10 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 				{
 					// Check data layers match
 					const TArray<const UDataLayerAsset*> AggDataLayers = Agg->GetDataLayerAssets();
-					if (AggDataLayers.Num() != SrcDataLayers.Num()) { continue; }
+					if (AggDataLayers.Num() != SrcDataLayers.Num())
+					{
+						continue;
+					}
 					bool bDataMatch = true;
 					for (const UDataLayerAsset* DL : SrcDataLayers)
 					{
@@ -268,11 +272,17 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 							break;
 						}
 					}
-					if (!bDataMatch) { continue; }
+					if (!bDataMatch)
+					{
+						continue;
+					}
 
 					// Check actor layers match
 					const TArray<FName> AggActorLayers = Agg->Layers;
-					if (AggActorLayers.Num() != SrcActorLayers.Num()) { continue; }
+					if (AggActorLayers.Num() != SrcActorLayers.Num())
+					{
+						continue;
+					}
 					bool bLayerMatch = true;
 					for (const FName& Layer : SrcActorLayers)
 					{
@@ -282,7 +292,10 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 							break;
 						}
 					}
-					if (!bLayerMatch) { continue; }
+					if (!bLayerMatch)
+					{
+						continue;
+					}
 
 					InstancedActor = Agg;
 					break;
@@ -292,18 +305,20 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			if (InstancedActor)
 			{
 				ActorToAggregate.Add(SMActor, InstancedActor);
+				InstancedActor->SetIsTemporarilyHiddenInEditor(false);
 			}
 			else
 			{
 				// Pass an empty existing map so FindOrCreateAggregateActor doesn't match an aggregate from a different level
 				TArray<const UDataLayerAsset*> AllLevelDataLayers = SrcDataLayers;
 				TMap<FString, AActor*> NoExisting;
-				AActor* NewAggregate = FindOrCreateAggregateActor(World, TEXT("InstancedActor"), AllLevelDataLayers, NoExisting, NAME_None, ActorLevel);
+				InstancedActor = FindOrCreateAggregateActor(World, TEXT("InstancedActor"), AllLevelDataLayers, NoExisting, NAME_None, ActorLevel);
+				InstancedActor->SetIsTemporarilyHiddenInEditor(false);
 				// Copy actor layers from source so future lookups match
-				NewAggregate->Layers = SrcActorLayers;
-				ActorToAggregate.Add(SMActor, NewAggregate);
+				InstancedActor->Layers = SrcActorLayers;
+				ActorToAggregate.Add(SMActor, InstancedActor);
 				// Register the new aggregate so subsequent actors in the same level + matching layers find it
-				AggregatesByLevel.FindOrAdd(ActorLevel).Add(NewAggregate);
+				AggregatesByLevel.FindOrAdd(ActorLevel).Add(InstancedActor);
 			}
 		}
 	}

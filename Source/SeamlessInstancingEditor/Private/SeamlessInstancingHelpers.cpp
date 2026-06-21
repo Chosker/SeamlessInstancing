@@ -348,7 +348,7 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, boo
 		Aggregate->GetComponents(RemainingISMCs);
 		if (RemainingISMCs.IsEmpty())
 		{
-			World->DestroyActor(Aggregate);
+			Aggregate->SetIsTemporarilyHiddenInEditor(true);
 		}
 	}
 
