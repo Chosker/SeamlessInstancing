@@ -517,3 +517,91 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 }
 
 #undef LOCTEXT_NAMESPACE
+
+// ============================================================================
+// Instance fingerprint (used to detect unedited round-trips)
+// ============================================================================
+
+uint32 ComputeActorFingerprint(AActor* Actor)
+{
+	if (!Actor)
+	{
+		return 0;
+	}
+
+	FBufferArchive Ar;
+
+	// Hash all ISM components and their instances
+	{
+		TArray<UInstancedStaticMeshComponent*> ISMCs;
+		Actor->GetComponents(ISMCs);
+
+		int32 NumISMCs = ISMCs.Num();
+		Ar << NumISMCs;
+
+		for (const UInstancedStaticMeshComponent* ISMC : ISMCs)
+		{
+			if (!ISMC)
+			{
+				continue;
+			}
+
+			// Mesh path
+			UStaticMesh* Mesh = ISMC->GetStaticMesh();
+			FString MeshPath = Mesh ? Mesh->GetPathName() : FString();
+			Ar << MeshPath;
+
+			// Number of instances on this component
+			int32 NumInstances = ISMC->GetInstanceCount();
+			Ar << NumInstances;
+
+			// Each instance's world transform
+			for (int32 i = 0; i < NumInstances; ++i)
+			{
+				FTransform InstanceTransform;
+				if (ISMC->GetInstanceTransform(i, InstanceTransform, /*bWorldSpace=*/true))
+				{
+					Ar << InstanceTransform;
+				}
+			}
+		}
+	}
+
+	// Actor-level world transform
+	{
+		FTransform WorldTransform = Actor->ActorToWorld();
+		Ar << WorldTransform;
+	}
+
+	// Runtime grid
+	{
+		FName RuntimeGrid = Actor->GetRuntimeGrid();
+		Ar << RuntimeGrid;
+	}
+
+	// Actor layers (classic layer system)
+	{
+		const TArray<FName>& ActorLayers = Actor->Layers;
+		int32 NumLayers = ActorLayers.Num();
+		Ar << NumLayers;
+		for (const FName& Layer : ActorLayers)
+		{
+			FString LayerStr = Layer.ToString();
+			Ar << LayerStr;
+		}
+	}
+
+	// Data layers
+	{
+		const TArray<const UDataLayerAsset*> DataLayers = Actor->GetDataLayerAssets();
+		int32 NumDLs = DataLayers.Num();
+		Ar << NumDLs;
+		for (const UDataLayerAsset* DL : DataLayers)
+		{
+			FString DLPath = DL ? DL->GetPathName() : FString();
+			Ar << DLPath;
+		}
+	}
+
+	return FCrc::MemCrc32(Ar.GetData(), Ar.Num());
+}
