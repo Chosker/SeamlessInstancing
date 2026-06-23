@@ -59,6 +59,9 @@ bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedS
 /** Convert a single ISM instance to a StaticMeshActor and select it */
 void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, bool bBeginTransaction = true);
 
+/** Add an instance to an ISMC at a deterministic index based on world position */
+void AddInstanceDeterministic(UInstancedStaticMeshComponent* ISMC, const FTransform& NewWorldTransform, const TArray<float>& NewCustomData);
+
 /** Find all ISM instances on Aggregate whose hit-proxy screen bounds intersect the rect */
 TArray<TPair<UInstancedStaticMeshComponent*, int32>> FindSelectionInstances(FViewport* Viewport, AActor* Aggregate, const FIntRect& SelectionRect);
 

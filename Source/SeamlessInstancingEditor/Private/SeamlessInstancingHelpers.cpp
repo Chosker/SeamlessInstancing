@@ -414,6 +414,100 @@ TArray<TPair<UInstancedStaticMeshComponent*, int32>> FindSelectionInstances(FVie
 	return Out;
 }
 
+void AddInstanceDeterministic(UInstancedStaticMeshComponent* ISMC, const FTransform& NewWorldTransform, const TArray<float>& NewCustomData)
+{
+	if (!ISMC)
+	{
+		return;
+	}
+
+	struct FDeterministicInstanceData
+	{
+		FTransform Transform;
+		TArray<float> CustomData;
+	};
+
+	TArray<FDeterministicInstanceData> InstanceData;
+	const int32 ExistingCount = ISMC->GetInstanceCount();
+	const int32 OldStride = ISMC->NumCustomDataFloats;
+	const int32 NumSrcFloats = NewCustomData.Num();
+	const int32 NewStride = FMath::Max(OldStride, NumSrcFloats);
+
+	InstanceData.Reserve(ExistingCount + 1);
+
+	// Snapshot existing instances (Transform + PerInstanceCustomData)
+	for (int32 i = 0; i < ExistingCount; ++i)
+	{
+		FDeterministicInstanceData& Item = InstanceData.AddDefaulted_GetRef();
+		ISMC->GetInstanceTransform(i, Item.Transform, true);
+
+		if (OldStride > 0)
+		{
+			Item.CustomData.SetNum(OldStride);
+			FMemory::Memcpy(Item.CustomData.GetData(), &ISMC->PerInstanceSMCustomData[i * OldStride], OldStride * sizeof(float));
+		}
+	}
+
+	// Prepare new instance's data
+	FDeterministicInstanceData NewItem;
+	NewItem.Transform = NewWorldTransform;
+
+	if (NewStride > 0)
+	{
+		NewItem.CustomData.SetNumZeroed(NewStride);
+		if (NumSrcFloats > 0)
+		{
+			FMemory::Memcpy(NewItem.CustomData.GetData(), NewCustomData.GetData(), NumSrcFloats * sizeof(float));
+		}
+	}
+
+	InstanceData.Add(MoveTemp(NewItem));
+
+	// Sort all instances by X, then Y, then Z for deterministic ordering
+	InstanceData.Sort([](const FDeterministicInstanceData& A, const FDeterministicInstanceData& B)
+	{
+		const FVector LocA = A.Transform.GetLocation();
+		const FVector LocB = B.Transform.GetLocation();
+		if (LocA.X < LocB.X) return true;
+		if (LocB.X < LocA.X) return false;
+		if (LocA.Y < LocB.Y) return true;
+		if (LocB.Y < LocA.Y) return false;
+		return LocA.Z < LocB.Z;
+	});
+
+	// Clear the ISMC and re-add all instances in sorted order
+	ISMC->ClearInstances();
+
+	TArray<FTransform> AllTransforms;
+	AllTransforms.Reserve(InstanceData.Num());
+	for (const FDeterministicInstanceData& Item : InstanceData)
+	{
+		AllTransforms.Add(Item.Transform);
+	}
+	ISMC->AddInstances(AllTransforms, true, true);
+
+	// Update custom data stride and populate PerInstanceSMCustomData
+	if (NewStride > 0)
+	{
+		ISMC->NumCustomDataFloats = NewStride;
+		ISMC->PerInstanceSMCustomData.SetNum(NewStride * InstanceData.Num());
+
+		for (int32 i = 0; i < InstanceData.Num(); ++i)
+		{
+			const int32 SrcCount = InstanceData[i].CustomData.Num();
+			float* Dst = &ISMC->PerInstanceSMCustomData[i * NewStride];
+			if (SrcCount > 0)
+			{
+				FMemory::Memcpy(Dst, InstanceData[i].CustomData.GetData(), FMath::Min(NewStride, SrcCount) * sizeof(float));
+			}
+			else
+			{
+				FMemory::Memset(Dst, 0, NewStride * sizeof(float));
+			}
+		}
+	}
+}
+
 // ============================================================================
 // World Partition helpers
 // ============================================================================
