@@ -512,7 +512,7 @@ void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActo
 			const int32 NumInstances = ISMC->GetInstanceCount();
 			for (int32 i = NumInstances - 1; i >= 0; --i)
 			{
-				BreakInstance(ISMC, i, /*bBeginTransaction=*/false);
+				BreakInstance(ISMC, i, false);
 			}
 		}
 	}

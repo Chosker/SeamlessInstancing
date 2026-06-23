@@ -573,8 +573,7 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.bCreateActorPackage = (World->GetWorldPartition() != nullptr);
 	SpawnParams.OverrideLevel = OverrideLevel;
-	FTransform SpawnTransform(SpawnLocation);
-	AggregateActor = World->SpawnActor<AActor>(AActor::StaticClass(), SpawnTransform, SpawnParams);
+	AggregateActor = World->SpawnActor<AActor>(AActor::StaticClass(), SpawnParams);
 	AggregateActor->SetActorLabel(Label);
 	AggregateActor->Tags.AddUnique(TEXT("SeamlessInstanceActor"));
 
@@ -604,6 +603,7 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 		Root->CreationMethod = EComponentCreationMethod::Instance;
 		Root->Mobility = EComponentMobility::Static;
 		AggregateActor->SetRootComponent(Root);
+		Root->SetWorldLocation(SpawnLocation);
 		Root->RegisterComponent();
 	}
 
