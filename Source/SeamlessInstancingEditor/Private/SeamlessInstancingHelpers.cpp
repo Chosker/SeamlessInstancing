@@ -256,15 +256,23 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, boo
 
 	const TArray<FProperty*> RelevantProperties = GatherProperties();
 
+	if (bBeginTransaction)
+	{
+		GEditor->BeginTransaction(LOCTEXT("BreakInstance", "Break Instance"));
+	}
+
+	// Save the state of all affected objects so the transaction can properly undo
+	Aggregate->Modify();
+	ISMC->Modify();
+	if (USceneComponent* Root = Aggregate->GetRootComponent())
+	{
+		Root->Modify();
+	}
+
 	// Deselect the aggregate before breaking the instance to avoid rendering its outline
 	if (GEditor)
 	{
 		GEditor->SelectActor(Aggregate, /*bSelected=*/false, /*bNotify=*/true);
-	}
-
-	if (bBeginTransaction)
-	{
-		GEditor->BeginTransaction(LOCTEXT("BreakInstance", "Break Instance"));
 	}
 
 	// Spawn the new SM actor in the same sublevel as the aggregate
