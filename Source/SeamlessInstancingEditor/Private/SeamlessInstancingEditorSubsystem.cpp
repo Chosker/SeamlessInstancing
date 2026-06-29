@@ -137,7 +137,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 	const TArray<FProperty*> RelevantProperties = GatherProperties();
 
-	TMap<FString, AActor*> ExistingAggregateActors;
+	TMultiMap<FString, AActor*> ExistingAggregateActors;
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		if (It->Tags.Contains(TEXT("SeamlessInstanceActor")))
@@ -181,7 +181,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 					const TArray<const UDataLayerAsset*> SrcDLs = SMActor->GetDataLayerAssets();
 
-					// Look for an existing aggregate in this cell with matching data layers
+					// Look for an existing aggregate in this cell with matching data layers. Only relevant when multiple Actors are converted at once
 					AActor* InstancedActor = nullptr;
 					{
 						TArray<AActor*> CellAggs;
@@ -311,7 +311,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			{
 				// Pass an empty existing map so FindOrCreateAggregateActor doesn't match an aggregate from a different level
 				TArray<const UDataLayerAsset*> AllLevelDataLayers = SrcDataLayers;
-				TMap<FString, AActor*> NoExisting;
+				TMultiMap<FString, AActor*> NoExisting;
 				InstancedActor = FindOrCreateAggregateActor(World, TEXT("InstancedActor"), AllLevelDataLayers, NoExisting, NAME_None, ActorLevel);
 				InstancedActor->SetIsTemporarilyHiddenInEditor(false);
 				// Copy actor layers from source so future lookups match

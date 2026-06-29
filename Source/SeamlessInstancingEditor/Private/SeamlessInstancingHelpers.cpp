@@ -529,21 +529,23 @@ int32 GetWorldPartitionCellSize(const UWorldPartitionEditorSpatialHash* SpatialH
 	return CellSizeProp->GetPropertyValue(CellSizeProp->ContainerPtrToValuePtr<int32>(SpatialHash));
 }
 
-AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMap<FString, AActor*>& ExistingByLabel, FName RuntimeGrid, ULevel* OverrideLevel, const FVector& SpawnLocation)
+AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TArray<const UDataLayerAsset*>& DataLayers, const TMultiMap<FString, AActor*>& ExistingByLabel, FName RuntimeGrid, ULevel* OverrideLevel, const FVector& SpawnLocation)
 {
 	AActor* AggregateActor = nullptr;
 
-	// Lookup via the pre-built map
-	if (const AActor* const* Found = ExistingByLabel.Find(Label))
+	// Lookup via the pre-built multi-map (handles multiple aggregates with the same label but different data layers)
+	TArray<AActor*> Candidates;
+	ExistingByLabel.MultiFind(Label, Candidates);
+	for (AActor* Candidate : Candidates)
 	{
-		AggregateActor = const_cast<AActor*>(*Found);
+		AggregateActor = Candidate;
 		// Safeguard to ensure correct Static Mobility
 		if (AggregateActor->GetRootComponent()->Mobility != EComponentMobility::Static)
 		{
 			AggregateActor->GetRootComponent()->SetMobility(EComponentMobility::Static);
 		}
 
-		// Verify that data layers match, otherwise create a new Aggregate
+		// Verify that data layers match, otherwise try the next candidate
 		const TArray<const UDataLayerAsset*> CurrentLayers = AggregateActor->GetDataLayerAssets();
 		bool bDataLayersMatch = (CurrentLayers.Num() == DataLayers.Num());
 		if (bDataLayersMatch)
@@ -558,7 +560,7 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 			}
 		}
 
-		// Verify that RuntimeGrid matches, otherwise create a new Aggregate
+		// Verify that RuntimeGrid matches, otherwise try the next candidate
 		bool bRuntimeGridMatch = (AggregateActor->GetRuntimeGrid() == RuntimeGrid);
 
 		if (bDataLayersMatch && bRuntimeGridMatch)
