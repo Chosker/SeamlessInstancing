@@ -19,6 +19,8 @@
 #include "SceneView.h"
 #include "InputCoreTypes.h"
 #include "Framework/Application/SlateApplication.h"
+#include "UObject/Package.h"
+#include "UObject/ObjectSaveContext.h"
 
 #define LOCTEXT_NAMESPACE "SeamlessInstancing"
 
@@ -54,6 +56,9 @@ void USeamlessInstancingEditorSubsystem::Initialize(FSubsystemCollectionBase& Co
 	// Start continuous ticker for detecting box-selection drags
 	SelectionTickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &USeamlessInstancingEditorSubsystem::TickSelectionCheck));
 
+	// Subscribe to PreSave to stamp aggregate actors with fingerprint tags
+	PreSavePackageHandle = UPackage::PreSavePackageWithContextEvent.AddStatic(USeamlessInstancingEditorSubsystem::OnPreSavePackage);
+
 	UE_LOG(LogSeamlessInstancing, Log, TEXT("SeamlessInstancingEditorSubsystem initialized."));
 }
 
@@ -64,6 +69,12 @@ void USeamlessInstancingEditorSubsystem::Deinitialize()
 
 	FTSTicker::GetCoreTicker().RemoveTicker(SelectionTickerHandle);
 	SelectionTickerHandle.Reset();
+
+	if (PreSavePackageHandle.IsValid())
+	{
+		UPackage::PreSavePackageWithContextEvent.Remove(PreSavePackageHandle);
+		PreSavePackageHandle.Reset();
+	}
 
 	if (GEditor)
 	{
@@ -324,6 +335,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 	}
 
 	TArray<AActor*> ActorsToDestroy;
+	TArray<AActor*> EditedAggregates;
 	GEditor->BeginTransaction(LOCTEXT("ConvertSMToInstanced", "Convert SM Actors to Instanced"));
 
 	for (AStaticMeshActor* SMActor : ActorsToConvert)
@@ -334,6 +346,8 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 		{
 			continue;
 		}
+
+		EditedAggregates.AddUnique(AggregateActor);
 
 		UStaticMeshComponent* SMC = SMActor->GetStaticMeshComponent();
 		SMActor->Modify();
@@ -392,6 +406,23 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 	for (AActor* Actor : ActorsToDestroy)
 	{
 		World->DestroyActor(Actor);
+	}
+
+	for (AActor* EditedAggregate : EditedAggregates)
+	{
+		// Fingerprint: check if this actor's state matches the stored tag from BreakInstance
+		for (const FName& Tag : EditedAggregate->Tags)
+		{
+			FString TagStr = Tag.ToString();
+			if (TagStr.StartsWith(TEXT("SeamlessFingerprint_")))
+			{
+				const uint32 StoredFP = (uint32)FCString::Strtoui64(*TagStr.RightChop(20), nullptr, 10);
+				const uint32 CurrentFP = ComputeActorFingerprint(EditedAggregate);
+				//UE_LOG(LogSeamlessInstancing, Log, TEXT("FINGERPRINT! %d // %d"), StoredFP, CurrentFP);
+				EditedAggregate->GetOutermost()->SetDirtyFlag(StoredFP != CurrentFP);
+				break;
+			}
+		}
 	}
 
 	GEditor->EndTransaction();
@@ -800,6 +831,7 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 								{
 									//UE_LOG(LogSeamlessInstancing, Log, TEXT("FindSelectionInstances BreakInstance: %d"), Sel.Value);
 									BreakInstance(Sel.Key, Sel.Value);
+									Aggregate->GetOutermost()->SetDirtyFlag(true);
 								}
 							}
 
@@ -816,10 +848,71 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 				UInstancedStaticMeshComponent* HitISMC = nullptr;
 				if (FindClickedInstance(Aggregate, InstanceIndex, HitISMC))
 				{
-					UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance BreakInstance: %d"), InstanceIndex);
+					//UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance BreakInstance: %d"), InstanceIndex);
 					BreakInstance(HitISMC, InstanceIndex);
+					Aggregate->GetOutermost()->SetDirtyFlag(true);
 				}
 			}
+		}
+	}
+}
+
+// ============================================================================
+// PreSave fingerprint tagging
+// ============================================================================
+
+void USeamlessInstancingEditorSubsystem::OnPreSavePackage(UPackage* Package, FObjectPreSaveContext Context)
+{
+	if (!Package || Context.IsCooking())
+	{
+		return;
+	}
+
+	// Collect all objects in the package: WP actor packages and non-WP level packages
+	TArray<UObject*> Objects;
+	GetObjectsWithOuter(Package, Objects, true);
+
+	for (UObject* Obj : Objects)
+	{
+		AActor* InstancedActor = Cast<AActor>(Obj);
+		if (!InstancedActor)
+		{
+			continue;
+		}
+		if (!InstancedActor->Tags.Contains(TEXT("SeamlessInstanceActor")))
+		{
+			continue;
+		}
+
+		// Compute the current fingerprint
+		const uint32 Fingerprint = ComputeActorFingerprint(InstancedActor);
+		FName FingerprintTag = FName(*FString::Printf(TEXT("SeamlessFingerprint_%u"), Fingerprint));
+
+		// Find Fingerprint tag to see if it needs updating
+		bool bNeedsTag = true;
+		for (const FName& Tag : InstancedActor->Tags)
+		{
+			FString TagStr = Tag.ToString();
+			if (TagStr.StartsWith(TEXT("SeamlessFingerprint_")))
+			{
+				if (Tag != FingerprintTag)
+				{
+					InstancedActor->Tags.RemoveAll([](const FName& Tag)
+					{
+						return Tag.ToString().StartsWith(TEXT("SeamlessFingerprint_"));
+					});
+				}
+				else
+				{
+					bNeedsTag = false;
+				}
+				break;
+			}
+		}
+
+		if (bNeedsTag)
+		{
+			InstancedActor->Tags.Add(FingerprintTag);
 		}
 	}
 }

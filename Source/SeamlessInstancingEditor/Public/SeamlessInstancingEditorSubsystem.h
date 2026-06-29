@@ -8,6 +8,7 @@
 
 class AActor;
 class UTypedElementSelectionSet;
+class FObjectPreSaveContext;
 
 UCLASS()
 class USeamlessInstancingEditorSubsystem : public UEditorSubsystem
@@ -58,5 +59,12 @@ private:
 
 	/** Cached selection-rect start captured in TickSelectionCheck */
 	FIntRect CachedSelectionRect = FIntRect();
+
+	/** Handle for the PreSave package delegate subscription */
+	FDelegateHandle PreSavePackageHandle;
+
+	/** Handler called before any package is saved. Finds aggregate actors in the package
+	 *  and stamps them with a fingerprint tag for change detection. */
+	static void OnPreSavePackage(UPackage* Package, FObjectPreSaveContext Context);
 
 };

@@ -213,7 +213,7 @@ bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedS
 
 	if (!HitProxy->IsA(HInstancedStaticMeshInstance::StaticGetType()))
 	{
-		UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance: unexpected HitProxy type \"%s\" at (%d,%d)"), HitProxy->GetType()->GetName(), MouseX, MouseY);
+		//UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance: unexpected HitProxy type \"%s\" at (%d,%d)"), HitProxy->GetType()->GetName(), MouseX, MouseY);
 		return false;
 	}
 
