@@ -16,6 +16,8 @@ Enjoy lightweight levels with instancing, with the proper UX of manipulating reg
 - Supports World Partition levels
   - Instances are separated per WP tile and per WP runtime grid
   - Instances are separated per each DataLayers combination
+- Supports non World Partition levels
+  - Instances are separated per Sublevel
 - Works on perspective and ortho viewports
 - Works with pick-based selection and selection box
 - Converts CustomPrimitiveData into PerInstanceCustomData and back
@@ -25,5 +27,4 @@ Enjoy lightweight levels with instancing, with the proper UX of manipulating reg
 - One File Per Actor granularity is greatly reduced since components are now merged
 
 ### TO DO
-- Non World Partition levels, sublevels
 - More stuff
