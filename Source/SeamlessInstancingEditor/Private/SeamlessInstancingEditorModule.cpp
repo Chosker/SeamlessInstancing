@@ -56,7 +56,7 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 {
 	USeamlessInstancingEditorSubsystem* InstancingSubsystem = GEditor ? GEditor->GetEditorSubsystem<USeamlessInstancingEditorSubsystem>() : nullptr;
 
-	InMenu->AddSection("Options", LOCTEXT("OptionsSection", "Options"));
+	InMenu->AddSection("Seamless Instancing", LOCTEXT("SeamlessInstancingSection", "Seamless Instancing"));
 
 	FToolMenuEntry ToggleEntry = FToolMenuEntry::InitMenuEntry(
 		"ToggleSeamlessInstancing",
@@ -83,7 +83,7 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 		),
 		EUserInterfaceActionType::Check
 	);
-	InMenu->AddMenuEntry("Options", ToggleEntry);
+	InMenu->AddMenuEntry("Seamless Instancing", ToggleEntry);
 
 	InMenu->AddSection("Actions", LOCTEXT("ActionsSection", "Actions"));
 
