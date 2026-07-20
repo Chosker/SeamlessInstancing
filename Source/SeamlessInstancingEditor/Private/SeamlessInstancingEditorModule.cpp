@@ -85,6 +85,89 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 	);
 	InMenu->AddMenuEntry("Seamless Instancing", ToggleEntry);
 
+	InMenu->AddSection("Options", LOCTEXT("OptionsSection", "Options"));
+
+	FToolMenuEntry ComponentTypeEntry = FToolMenuEntry::InitSubMenu(
+		"ComponentType",
+		LOCTEXT("ComponentType", "Component Type"),
+		LOCTEXT("ComponentTypeTooltip", "Choose which instanced component type to use when converting"),
+		FNewToolMenuDelegate::CreateLambda([InstancingSubsystem](UToolMenu* SubMenu)
+		{
+			FToolMenuSection& SubSection = SubMenu->AddSection("ComponentTypeSection", LOCTEXT("ComponentTypeSection", "Component Type"));
+
+			// Auto
+			SubSection.AddMenuEntry(
+				"ComponentTypeAuto",
+				LOCTEXT("ComponentTypeAuto", "Auto"),
+				LOCTEXT("ComponentTypeAutoTooltip", "Automatically choose ISM or HISM based on Nanite use"),
+				FSlateIcon(),
+				FUIAction(
+					FExecuteAction::CreateLambda([InstancingSubsystem]
+					{
+						if (InstancingSubsystem)
+						{
+							InstancingSubsystem->SetComponentType(ESeamlessComponentType::Auto);
+						}
+					}),
+					FCanExecuteAction(),
+					FIsActionChecked::CreateLambda([InstancingSubsystem]
+					{
+						return InstancingSubsystem && InstancingSubsystem->GetComponentType() == ESeamlessComponentType::Auto;
+					})
+				),
+				EUserInterfaceActionType::RadioButton
+			);
+
+			// ISM
+			SubSection.AddMenuEntry(
+				"ComponentTypeISM",
+				LOCTEXT("ComponentTypeISM", "ISM"),
+				LOCTEXT("ComponentTypeISMTooltip", "Always use InstancedStaticMeshComponent"),
+				FSlateIcon(),
+				FUIAction(
+					FExecuteAction::CreateLambda([InstancingSubsystem]
+					{
+						if (InstancingSubsystem)
+						{
+							InstancingSubsystem->SetComponentType(ESeamlessComponentType::ISM);
+						}
+					}),
+					FCanExecuteAction(),
+					FIsActionChecked::CreateLambda([InstancingSubsystem]
+					{
+						return InstancingSubsystem && InstancingSubsystem->GetComponentType() == ESeamlessComponentType::ISM;
+					})
+				),
+				EUserInterfaceActionType::RadioButton
+			);
+
+			// HISM
+			SubSection.AddMenuEntry(
+				"ComponentTypeHISM",
+				LOCTEXT("ComponentTypeHISM", "HISM"),
+				LOCTEXT("ComponentTypeHISMTooltip", "Always use HierarchicalInstancedStaticMeshComponent"),
+				FSlateIcon(),
+				FUIAction(
+					FExecuteAction::CreateLambda([InstancingSubsystem]
+					{
+						if (InstancingSubsystem)
+						{
+							InstancingSubsystem->SetComponentType(ESeamlessComponentType::HISM);
+						}
+					}),
+					FCanExecuteAction(),
+					FIsActionChecked::CreateLambda([InstancingSubsystem]
+					{
+						return InstancingSubsystem && InstancingSubsystem->GetComponentType() == ESeamlessComponentType::HISM;
+					})
+				),
+				EUserInterfaceActionType::RadioButton
+			);
+		}),
+		true
+	);
+	InMenu->AddMenuEntry("Options", ComponentTypeEntry);
+
 	InMenu->AddSection("Actions", LOCTEXT("ActionsSection", "Actions"));
 
 	FToolMenuEntry ConvertSMToInstanced = FToolMenuEntry::InitMenuEntry(

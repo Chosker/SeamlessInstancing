@@ -35,6 +35,11 @@ void USeamlessInstancingEditorSubsystem::Initialize(FSubsystemCollectionBase& Co
 
 		// Cache the toggle from config
 		GConfig->GetBool(TEXT("SeamlessInstancing"), TEXT("bEnableSeamless"), bCachedSeamlessEnabled, GEditorPerProjectIni);
+		{
+			int32 CachedType = static_cast<int32>(ESeamlessComponentType::Auto);
+			GConfig->GetInt(TEXT("SeamlessInstancing"), TEXT("ComponentType"), CachedType, GEditorPerProjectIni);
+			ComponentType = static_cast<ESeamlessComponentType>(CachedType);
+		}
 
 		// Prime the previous-selection set from the current state.
 		if (USelection* ActorSelection = GEditor->GetSelectedActors())
@@ -514,6 +519,13 @@ void USeamlessInstancingEditorSubsystem::SetSeamlessEnabled(bool bEnabled)
 {
 	bCachedSeamlessEnabled = bEnabled;
 	GConfig->SetBool(TEXT("SeamlessInstancing"), TEXT("bEnableSeamless"), bEnabled, GEditorPerProjectIni);
+	GConfig->Flush(false, GEditorPerProjectIni);
+}
+
+void USeamlessInstancingEditorSubsystem::SetComponentType(ESeamlessComponentType InType)
+{
+	ComponentType = InType;
+	GConfig->SetInt(TEXT("SeamlessInstancing"), TEXT("ComponentType"), static_cast<int32>(InType), GEditorPerProjectIni);
 	GConfig->Flush(false, GEditorPerProjectIni);
 }
 

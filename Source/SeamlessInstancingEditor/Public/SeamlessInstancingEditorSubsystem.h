@@ -10,6 +10,14 @@ class AActor;
 class UTypedElementSelectionSet;
 class FObjectPreSaveContext;
 
+UENUM()
+enum class ESeamlessComponentType : uint8
+{
+	Auto    UMETA(DisplayName = "Auto"),
+	ISM     UMETA(DisplayName = "ISM"),
+	HISM    UMETA(DisplayName = "HISM")
+};
+
 UCLASS()
 class USeamlessInstancingEditorSubsystem : public UEditorSubsystem
 {
@@ -34,6 +42,10 @@ public:
 
 	bool IsSeamlessEnabled() const { return bCachedSeamlessEnabled; }
 
+	ESeamlessComponentType GetComponentType() const { return ComponentType; }
+
+	void SetComponentType(ESeamlessComponentType InType);
+
 private:
 	UFUNCTION()
 	void OnSelectionChanged(const UTypedElementSelectionSet* SelectionSet);
@@ -56,6 +68,9 @@ private:
 
 	/** Cached value of bEnableSeamless from GEditorPerProjectIni */
 	bool bCachedSeamlessEnabled = false;
+
+	/** Cached value of ComponentType from GEditorPerProjectIni */
+	ESeamlessComponentType ComponentType = ESeamlessComponentType::Auto;
 
 	/** Cached selection-rect start captured in TickSelectionCheck */
 	FIntRect CachedSelectionRect = FIntRect();
