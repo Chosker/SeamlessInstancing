@@ -717,8 +717,6 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 	// Convert clicked ISM instances back to SM actors
 	if (!NewlySelectedAggregates.IsEmpty())
 	{
-		GEditor->BeginTransaction(LOCTEXT("BreakInstancesToSM", "Break Instances to SM Actors"));
-
 		for (AActor* Aggregate : NewlySelectedAggregates)
 		{
 			// Detect box/frustum selection first using the cached selection-rect
@@ -851,12 +849,11 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 				if (FindClickedInstance(Aggregate, InstanceIndex, HitISMC))
 				{
 					//UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance BreakInstance: %d"), InstanceIndex);
-					BreakInstance(HitISMC, InstanceIndex, false);
+					BreakInstance(HitISMC, InstanceIndex);
 					Aggregate->GetOutermost()->SetDirtyFlag(true);
 				}
 			}
 		}
-		GEditor->EndTransaction();
 	}
 }
 
