@@ -26,9 +26,9 @@ public:
 
 	void ConvertAllSMToInstanced();
 
-	void ConvertAllInstancedToSM();
+	TArray<AStaticMeshActor*> ConvertAllInstancedToSM();
 
-	void ConvertInstancedToSM(const TArray<AActor*>& AggregatesToConvert);
+	TArray<AStaticMeshActor*> ConvertInstancedToSM(const TArray<AActor*>& AggregatesToConvert);
 
 	void SetSeamlessEnabled(bool bEnabled);
 

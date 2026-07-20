@@ -223,30 +223,30 @@ bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedS
 	return true;
 }
 
-void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, bool bBeginTransaction)
+AStaticMeshActor* BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, bool bBeginTransaction)
 {
 	if (!ISMC || InstanceIndex < 0 || InstanceIndex >= ISMC->GetInstanceCount())
 	{
-		return;
+		return nullptr;
 	}
 
 	AActor* Aggregate = ISMC->GetOwner();
 	UWorld* World = Aggregate ? Aggregate->GetWorld() : nullptr;
 	if (!World)
 	{
-		return;
+		return nullptr;
 	}
 
 	FTransform InstanceTransform;
 	if (!ISMC->GetInstanceTransform(InstanceIndex, InstanceTransform, /*bWorldSpace=*/true))
 	{
-		return;
+		return nullptr;
 	}
 
 	UStaticMesh* Mesh = ISMC->GetStaticMesh();
 	if (!Mesh)
 	{
-		return;
+		return nullptr;
 	}
 
 	const TArray<FProperty*> RelevantProperties = GatherProperties();
@@ -377,6 +377,7 @@ void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, boo
 			return false;
 		}
 	));
+	return NewSMActor;
 }
 
 TArray<TPair<UInstancedStaticMeshComponent*, int32>> FindSelectionInstances(FViewport* Viewport, AActor* Aggregate, const FIntRect& SelectionRect)

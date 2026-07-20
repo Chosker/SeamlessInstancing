@@ -428,12 +428,12 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 	GEditor->BroadcastLevelActorListChanged();
 }
 
-void USeamlessInstancingEditorSubsystem::ConvertAllInstancedToSM()
+TArray<AStaticMeshActor*> USeamlessInstancingEditorSubsystem::ConvertAllInstancedToSM()
 {
 	UWorld* World = GEditor->GetEditorWorldContext().World();
 	if (!World)
 	{
-		return;
+		return {};
 	}
 
 	TArray<AActor*> AggregatesToConvert;
@@ -455,21 +455,22 @@ void USeamlessInstancingEditorSubsystem::ConvertAllInstancedToSM()
 
 	if (AggregatesToConvert.IsEmpty())
 	{
-		return;
+		return {};
 	}
 
-	ConvertInstancedToSM(AggregatesToConvert);
+	return ConvertInstancedToSM(AggregatesToConvert);
 }
 
-void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActor*>& AggregatesToConvert)
+TArray<AStaticMeshActor*> USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActor*>& AggregatesToConvert)
 {
 	UWorld* World = GEditor->GetEditorWorldContext().World();
 	if (!World)
 	{
-		return;
+		return {};
 	}
 
 	GEditor->BeginTransaction(LOCTEXT("ConvertInstancedToSM", "Convert Instanced to SM Actors"));
+	TArray<AStaticMeshActor*> CreatedActors;
 
 	for (AActor* Aggregate : AggregatesToConvert)
 	{
@@ -497,12 +498,16 @@ void USeamlessInstancingEditorSubsystem::ConvertInstancedToSM(const TArray<AActo
 			const int32 NumInstances = ISMC->GetInstanceCount();
 			for (int32 i = NumInstances - 1; i >= 0; --i)
 			{
-				BreakInstance(ISMC, i, false);
+				if (AStaticMeshActor* NewActor = BreakInstance(ISMC, i, false))
+				{
+					CreatedActors.Add(NewActor);
+				}
 			}
 		}
 	}
 
 	GEditor->EndTransaction();
+	return CreatedActors;
 }
 
 void USeamlessInstancingEditorSubsystem::SetSeamlessEnabled(bool bEnabled)

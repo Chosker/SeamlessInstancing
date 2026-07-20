@@ -116,6 +116,25 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 		}))
 	);
 	InMenu->AddMenuEntry("Actions", ConvertInstancedToSM);
+
+	FToolMenuEntry RecreateInstances = FToolMenuEntry::InitMenuEntry(
+		"RecreateInstances",
+		LOCTEXT("RecreateInstances", "Recreate All Instances"),
+		LOCTEXT("RecreateInstancesTooltip", "Breaks all instances and then re-instances them, when a cleanup is needed"),
+		FSlateIcon(),
+		FUIAction(FExecuteAction::CreateLambda([InstancingSubsystem]
+		{
+			if (InstancingSubsystem)
+			{
+				TArray<AStaticMeshActor*> CreatedActors = InstancingSubsystem->ConvertAllInstancedToSM();
+				if (!CreatedActors.IsEmpty())
+				{
+					InstancingSubsystem->ConvertSMToInstanced(CreatedActors);
+				}
+			}
+		}))
+	);
+	InMenu->AddMenuEntry("Actions", RecreateInstances);
 }
 
 #undef LOCTEXT_NAMESPACE

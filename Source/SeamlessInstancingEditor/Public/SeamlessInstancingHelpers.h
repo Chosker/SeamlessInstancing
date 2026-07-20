@@ -56,8 +56,8 @@ void CopyRelevantProperties(UStaticMeshComponent* Source, UStaticMeshComponent* 
 /** Find the ISM instance under the cursor via viewport hit-proxy system */
 bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedStaticMeshComponent*& OutISMC);
 
-/** Convert a single ISM instance to a StaticMeshActor and select it */
-void BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, bool bBeginTransaction = true);
+/** Convert a single ISM instance to a StaticMeshActor and select it. Returns the newly created actor. */
+AStaticMeshActor* BreakInstance(UInstancedStaticMeshComponent* ISMC, int32 InstanceIndex, bool bBeginTransaction = true);
 
 /** Add an instance to an ISMC at a deterministic index based on world position */
 void AddInstanceDeterministic(UInstancedStaticMeshComponent* ISMC, const FTransform& NewWorldTransform, const TArray<float>& NewCustomData);
