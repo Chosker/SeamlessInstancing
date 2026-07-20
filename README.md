@@ -21,6 +21,7 @@ Enjoy lightweight levels with instancing, with the proper UX of manipulating reg
 - Works on perspective and ortho viewports
 - Works with pick-based selection and selection box
 - Converts CustomPrimitiveData into PerInstanceCustomData and back
+- Works seamlessly with Undo/Redo
 
 ### Caveats and Considerations
 - Makes Actor Groups unusable. Needs some thinking on how they could be made to work
