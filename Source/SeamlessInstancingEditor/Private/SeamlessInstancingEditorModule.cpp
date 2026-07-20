@@ -35,7 +35,7 @@ void FSeamlessInstancingEditorModule::StartupModule()
 		DefaultAction,
 		FNewToolMenuDelegate::CreateRaw(this, &FSeamlessInstancingEditorModule::FillDropdownMenu),
 		LOCTEXT("ToolbarButton", "Seamless Instancing"),
-		LOCTEXT("ToolbarTooltip", "Seamless Instancing tools and commands"),
+		LOCTEXT("ToolbarTooltip", "Seamless Instancing"),
 		FSlateIcon(FSeamlessInstancingStyle::GetStyleSetName(), "SeamlessInstancing.ToolbarIcon")
 	);
 
