@@ -24,9 +24,7 @@
 
 #define LOCTEXT_NAMESPACE "SeamlessInstancing"
 
-// ============================================================================
 // Subsystem implementation
-// ============================================================================
 
 void USeamlessInstancingEditorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -418,7 +416,6 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			{
 				const uint32 StoredFP = (uint32)FCString::Strtoui64(*TagStr.RightChop(20), nullptr, 10);
 				const uint32 CurrentFP = ComputeActorFingerprint(EditedAggregate);
-				//UE_LOG(LogSeamlessInstancing, Log, TEXT("FINGERPRINT! %d // %d"), StoredFP, CurrentFP);
 				EditedAggregate->GetOutermost()->SetDirtyFlag(StoredFP != CurrentFP);
 				break;
 			}
@@ -515,9 +512,7 @@ void USeamlessInstancingEditorSubsystem::SetSeamlessEnabled(bool bEnabled)
 	GConfig->Flush(false, GEditorPerProjectIni);
 }
 
-// ============================================================================
 // Lazy binding
-// ============================================================================
 
 void USeamlessInstancingEditorSubsystem::TryBindSelectionEvents()
 {
@@ -558,9 +553,7 @@ bool USeamlessInstancingEditorSubsystem::TickBindRetry(float DeltaTime)
 	return !bSelectionEventsBound;
 }
 
-// ============================================================================
 // Tick-based rect capture
-// ============================================================================
 
 bool USeamlessInstancingEditorSubsystem::TickSelectionCheck(float DeltaTime)
 {
@@ -603,15 +596,6 @@ bool USeamlessInstancingEditorSubsystem::TickSelectionCheck(float DeltaTime)
 		CachedSelectionRect.Min.Y = FMath::Max(CachedSelectionRect.Min.Y, 0);
 		CachedSelectionRect.Max.X = FMath::Min(CachedSelectionRect.Max.X, ActiveViewport->GetSizeXY().X);
 		CachedSelectionRect.Max.Y = FMath::Min(CachedSelectionRect.Max.Y, ActiveViewport->GetSizeXY().Y);
-
-		/*UE_LOG(LogSeamlessInstancing, Log,
-			TEXT("TickRect: MouseTracker.Start=(%f,%f) Delta=(%f,%f) Cached=(%d,%d)-(%d,%d) MousePos=(%d,%d) ViewSize=%s"),
-			Start.X, Start.Y,
-			MouseTracker->GetAbsoluteDelta().X, MouseTracker->GetAbsoluteDelta().Y,
-			CachedSelectionRect.Min.X, CachedSelectionRect.Min.Y,
-			CachedSelectionRect.Max.X, CachedSelectionRect.Max.Y,
-			MousePos.X, MousePos.Y,
-			*ActiveViewport->GetSizeXY().ToString());*/
 	}
 	// Discard if rect < MOUSE_CLICK_DRAG_DELTA
 	else if (CachedSelectionRect.Width() < 4 || CachedSelectionRect.Height() < 4)
@@ -622,9 +606,7 @@ bool USeamlessInstancingEditorSubsystem::TickSelectionCheck(float DeltaTime)
 	return true;
 }
 
-// ============================================================================
 // Selection-change handler
-// ============================================================================
 
 void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementSelectionSet* SelectionSet)
 {
@@ -728,90 +710,8 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 				{
 					if (SelRect.Width() > 0 && SelRect.Height() > 0)
 					{
-						/*UE_LOG(LogSeamlessInstancing, Log, TEXT("OnSelectionChanged: Rect(%d,%d,%d,%d) ViewSize(%d,%d)"),
-							SelRect.Min.X, SelRect.Min.Y, SelRect.Max.X, SelRect.Max.Y,
-							ActiveViewport->GetSizeXY().X, ActiveViewport->GetSizeXY().Y);*/
-
 						// Use the viewport's hit-proxy rect query
 						TArray<TPair<UInstancedStaticMeshComponent*, int32>> Selected = FindSelectionInstances(ActiveViewport, Aggregate, SelRect);
-
-						// DEBUG: draw a 3D box matching the viewport selection rect
-						/*if (FEditorViewportClient* EditorVC = static_cast<FEditorViewportClient*>(ActiveViewport->GetClient()))
-						{
-							if (UWorld* World = GEditor->GetEditorWorldContext().World())
-							{
-								FSceneViewFamilyContext ViewFamily(FSceneViewFamily::ConstructionValues(ActiveViewport, EditorVC->GetScene(), EditorVC->EngineShowFlags).SetRealtimeUpdate(EditorVC->IsRealtime()));
-
-								if (FSceneView* View = EditorVC->CalcSceneView(&ViewFamily))
-								{
-									// Build an oriented debug box that visually matches the screen rect
-									const FVector ViewLocation = View->ViewMatrices.GetViewOrigin();
-									const FVector ViewForward = View->GetViewDirection();
-									const FIntRect ViewRect = View->UnscaledViewRect;
-									const double CornerDistance = 1000.0;
-
-									auto UnprojectToFrustum = [&](float PixelX, float PixelY, FVector& OutPoint) -> bool
-									{
-										FVector RayOrigin, RayDir;
-										View->DeprojectFVector2D(FVector2D(PixelX, PixelY), RayOrigin, RayDir);
-										const double Forward = FVector::DotProduct(RayDir, ViewForward);
-										if (FMath::Abs(Forward) < UE_KINDA_SMALL_NUMBER)
-										{
-											return false;
-										}
-										OutPoint = RayOrigin + RayDir * (CornerDistance / Forward);
-										return true;
-									};
-
-									FVector TL, TR, BR, BL;
-									if (!UnprojectToFrustum(SelRect.Min.X, SelRect.Min.Y, TL) ||
-										!UnprojectToFrustum(SelRect.Max.X, SelRect.Min.Y, TR) ||
-										!UnprojectToFrustum(SelRect.Max.X, SelRect.Max.Y, BR) ||
-										!UnprojectToFrustum(SelRect.Min.X, SelRect.Max.Y, BL))
-									{
-										return;
-									}
-
-									const FVector BoxCenter = (TL + TR + BR + BL) * 0.25;
-									const FVector ScreenRight = ((TR - TL) + (BR - BL)).GetSafeNormal();
-									const FVector ScreenUp = ((BL - TL) + (BR - TR)).GetSafeNormal();
-									const FVector ScreenForward = FVector::CrossProduct(ScreenRight, ScreenUp).GetSafeNormal();
-
-									// Per-edge depths (along ViewForward)
-									const double DepthTL = FVector::DotProduct(TL - ViewLocation, ViewForward);
-									const double DepthTR = FVector::DotProduct(TR - ViewLocation, ViewForward);
-									const double DepthBL = FVector::DotProduct(BL - ViewLocation, ViewForward);
-									const double DepthBR = FVector::DotProduct(BR - ViewLocation, ViewForward);
-
-									auto HarmonicMean = [](double A, double B) -> double
-									{
-										return (FMath::Abs(A + B) > UE_KINDA_SMALL_NUMBER)
-											? (2.0 * A * B) / (A + B)
-											: (A + B) * 0.5;
-									};
-									const double WidthDepth  = HarmonicMean(HarmonicMean(DepthTL, DepthTR), HarmonicMean(DepthBL, DepthBR));
-									const double HeightDepth = HarmonicMean(HarmonicMean(DepthTL, DepthBL), HarmonicMean(DepthTR, DepthBR));
-									const double EdgeWidthDepth  = (DepthTL + DepthTR) * 0.5;
-									const double EdgeHeightDepth = (DepthTL + DepthBL) * 0.5;
-									const double WidthScale  = (EdgeWidthDepth  > UE_KINDA_SMALL_NUMBER) ? WidthDepth  / EdgeWidthDepth  : 1.0;
-									const double HeightScale = (EdgeHeightDepth > UE_KINDA_SMALL_NUMBER) ? HeightDepth / EdgeHeightDepth : 1.0;
-
-									const double HalfWidth  = ((TR - TL).Size() + (BR - BL).Size()) * 0.25 * WidthScale;
-									const double HalfHeight = ((BL - TL).Size() + (BR - TR).Size()) * 0.25 * HeightScale;
-									const double HalfDepth = 0.1f;
-
-									const FVector Extent(FMath::Max(HalfWidth, 0.1), FMath::Max(HalfHeight, 0.1), HalfDepth);
-									const FQuat BoxRotation = FQuat(FMatrix(
-										FPlane(ScreenRight.X,   ScreenRight.Y,   ScreenRight.Z,   0),
-										FPlane(ScreenUp.X,      ScreenUp.Y,      ScreenUp.Z,      0),
-										FPlane(ScreenForward.X, ScreenForward.Y, ScreenForward.Z, 0),
-										FPlane(0, 0, 0, 1)
-									));
-
-									DrawDebugBox(World, BoxCenter, Extent, BoxRotation, FColor::Red, false, 100.0f, SDPG_Foreground, 0.0f);
-								}
-							}
-						}*/
 
 						if (!Selected.IsEmpty())
 						{
@@ -857,9 +757,7 @@ void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementS
 	}
 }
 
-// ============================================================================
 // PreSave fingerprint tagging
-// ============================================================================
 
 void USeamlessInstancingEditorSubsystem::OnPreSavePackage(UPackage* Package, FObjectPreSaveContext Context)
 {

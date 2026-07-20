@@ -60,8 +60,8 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 
 	FToolMenuEntry ToggleEntry = FToolMenuEntry::InitMenuEntry(
 		"ToggleSeamlessInstancing",
-		LOCTEXT("ToggleSeamlessInstancing", "Seamless Instancing"),
-		LOCTEXT("ToggleSeamlessInstancingTooltip", "Enable seamless instancing"),
+		LOCTEXT("ToggleSeamlessInstancing", "Enable Seamless Instancing"),
+		LOCTEXT("ToggleSeamlessInstancingTooltip", "Enables the seamless instancing system"),
 		FSlateIcon(),
 		FUIAction(
 			FExecuteAction::CreateLambda([InstancingSubsystem]

@@ -18,9 +18,7 @@
 
 #define LOCTEXT_NAMESPACE "SeamlessInstancing"
 
-// ============================================================================
 // Property helpers
-// ============================================================================
 
 bool IsActorOrComponentRef(const FProperty* Prop)
 {
@@ -180,9 +178,7 @@ void CopyRelevantProperties(UStaticMeshComponent* Source, UStaticMeshComponent* 
 	}
 }
 
-// ============================================================================
 // Selection helpers
-// ============================================================================
 
 bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedStaticMeshComponent*& OutISMC)
 {
@@ -213,7 +209,6 @@ bool FindClickedInstance(AActor* Aggregate, int32& OutInstanceIndex, UInstancedS
 
 	if (!HitProxy->IsA(HInstancedStaticMeshInstance::StaticGetType()))
 	{
-		//UE_LOG(LogSeamlessInstancing, Log, TEXT("FindClickedInstance: unexpected HitProxy type \"%s\" at (%d,%d)"), HitProxy->GetType()->GetName(), MouseX, MouseY);
 		return false;
 	}
 
@@ -516,9 +511,7 @@ void AddInstanceDeterministic(UInstancedStaticMeshComponent* ISMC, const FTransf
 	}
 }
 
-// ============================================================================
 // World Partition helpers
-// ============================================================================
 
 int32 GetWorldPartitionCellSize(const UWorldPartitionEditorSpatialHash* SpatialHash)
 {
@@ -622,9 +615,7 @@ AActor* FindOrCreateAggregateActor(UWorld* World, const FString& Label, const TA
 
 #undef LOCTEXT_NAMESPACE
 
-// ============================================================================
 // Instance fingerprint (used to detect unedited round-trips)
-// ============================================================================
 
 uint32 ComputeActorFingerprint(AActor* Actor)
 {
