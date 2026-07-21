@@ -13,6 +13,7 @@
 #include "WorldPartition/WorldPartitionEditorSpatialHash.h"
 #include "Engine/StaticMeshActor.h"
 #include "Components/InstancedStaticMeshComponent.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "EditorViewportClient.h"
@@ -359,7 +360,9 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 		InstanceKey.Mesh = SMC->GetStaticMesh();
 		InstanceKey.PropertiesHash = HashComponentProperties(SMC, RelevantProperties);
 
-		// Scan the aggregate for an existing ISMC with matching mesh and properties
+		const bool bUseHISM = (ComponentType == ESeamlessComponentType::HISM) || (ComponentType == ESeamlessComponentType::Auto && InstanceKey.Mesh && !InstanceKey.Mesh->NaniteSettings.bEnabled);
+
+		// Scan the aggregate for an existing ISMC with matching mesh, properties, and component type
 		UInstancedStaticMeshComponent* ISMC = nullptr;
 		{
 			TArray<UInstancedStaticMeshComponent*> ExistingISMCs;
@@ -368,6 +371,11 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 			const FName IncomingHashTag = FName(*FString::Printf(TEXT("SrcHash_%u"), InstanceKey.PropertiesHash));
 			for (UInstancedStaticMeshComponent* Existing : ExistingISMCs)
 			{
+				const bool bExistingIsHISM = (Cast<UHierarchicalInstancedStaticMeshComponent>(Existing) != nullptr);
+				if (bExistingIsHISM != bUseHISM)
+				{
+					continue;
+				}
 				if (Existing->GetStaticMesh() == InstanceKey.Mesh && Existing->ComponentTags.Contains(IncomingHashTag))
 				{
 					ISMC = Existing;
@@ -378,8 +386,16 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 
 		if (!ISMC)
 		{
-			const FName ISMCName = *FString::Printf(TEXT("ISMC_%s_%u"), *InstanceKey.Mesh->GetName(), InstanceKey.PropertiesHash);
-			ISMC = NewObject<UInstancedStaticMeshComponent>(AggregateActor, ISMCName, RF_Transactional);
+			if (bUseHISM)
+			{
+				const FName ISMCName = *FString::Printf(TEXT("HISM_%s_%u"), *InstanceKey.Mesh->GetName(), InstanceKey.PropertiesHash);
+				ISMC = NewObject<UHierarchicalInstancedStaticMeshComponent>(AggregateActor, ISMCName, RF_Transactional);
+			}
+			else
+			{
+				const FName ISMCName = *FString::Printf(TEXT("ISM_%s_%u"), *InstanceKey.Mesh->GetName(), InstanceKey.PropertiesHash);
+				ISMC = NewObject<UInstancedStaticMeshComponent>(AggregateActor, ISMCName, RF_Transactional);
+			}
 			ISMC->SetStaticMesh(InstanceKey.Mesh);
 			ISMC->SetupAttachment(AggregateActor->GetRootComponent());
 			ISMC->bHasPerInstanceHitProxies = true;

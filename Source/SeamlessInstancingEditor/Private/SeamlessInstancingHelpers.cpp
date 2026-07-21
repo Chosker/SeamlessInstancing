@@ -498,16 +498,13 @@ void AddInstanceDeterministic(UInstancedStaticMeshComponent* ISMC, const FTransf
 
 		for (int32 i = 0; i < InstanceData.Num(); ++i)
 		{
-			const int32 SrcCount = InstanceData[i].CustomData.Num();
-			float* Dst = &ISMC->PerInstanceSMCustomData[i * NewStride];
-			if (SrcCount > 0)
+			// Pad the instance's custom data array to the expected stride, then set it
+			TArray<float>& CustomData = InstanceData[i].CustomData;
+			if (CustomData.Num() < NewStride)
 			{
-				FMemory::Memcpy(Dst, InstanceData[i].CustomData.GetData(), FMath::Min(NewStride, SrcCount) * sizeof(float));
+				CustomData.AddZeroed(NewStride - CustomData.Num());
 			}
-			else
-			{
-				FMemory::Memset(Dst, 0, NewStride * sizeof(float));
-			}
+			ISMC->SetCustomData(i, CustomData, /*bMarkRenderStateDirty=*/ i == InstanceData.Num() - 1);
 		}
 	}
 }
