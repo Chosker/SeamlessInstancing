@@ -41,6 +41,8 @@ void USeamlessInstancingEditorSubsystem::Initialize(FSubsystemCollectionBase& Co
 			GConfig->GetInt(TEXT("SeamlessInstancing"), TEXT("ComponentType"), CachedType, GEditorPerProjectIni);
 			ComponentType = static_cast<ESeamlessComponentType>(CachedType);
 		}
+		GConfig->GetBool(TEXT("SeamlessInstancing"), TEXT("bEnableOnWP"), bCachedEnableOnWP, GEditorPerProjectIni);
+		GConfig->GetBool(TEXT("SeamlessInstancing"), TEXT("bEnableOnNonWP"), bCachedEnableOnNonWP, GEditorPerProjectIni);
 
 		// Prime the previous-selection set from the current state.
 		if (USelection* ActorSelection = GEditor->GetSelectedActors())
@@ -545,6 +547,20 @@ void USeamlessInstancingEditorSubsystem::SetComponentType(ESeamlessComponentType
 	GConfig->Flush(false, GEditorPerProjectIni);
 }
 
+void USeamlessInstancingEditorSubsystem::SetEnableOnWP(bool bEnabled)
+{
+	bCachedEnableOnWP = bEnabled;
+	GConfig->SetBool(TEXT("SeamlessInstancing"), TEXT("bEnableOnWP"), bEnabled, GEditorPerProjectIni);
+	GConfig->Flush(false, GEditorPerProjectIni);
+}
+
+void USeamlessInstancingEditorSubsystem::SetEnableOnNonWP(bool bEnabled)
+{
+	bCachedEnableOnNonWP = bEnabled;
+	GConfig->SetBool(TEXT("SeamlessInstancing"), TEXT("bEnableOnNonWP"), bEnabled, GEditorPerProjectIni);
+	GConfig->Flush(false, GEditorPerProjectIni);
+}
+
 // Lazy binding
 
 void USeamlessInstancingEditorSubsystem::TryBindSelectionEvents()
@@ -591,6 +607,18 @@ bool USeamlessInstancingEditorSubsystem::TickBindRetry(float DeltaTime)
 bool USeamlessInstancingEditorSubsystem::TickSelectionCheck(float DeltaTime)
 {
 	if (!IsSeamlessEnabled() || !GEditor)
+	{
+		return true;
+	}
+
+	UWorld* World = GEditor->GetEditorWorldContext().World();
+	if (!World)
+	{
+		return true;
+	}
+
+	bool LevelUsesWP = World->GetWorldPartition() != nullptr && World->GetWorldPartition()->bEnableStreaming;
+	if ((LevelUsesWP && !IsEnabledOnWP()) || (!LevelUsesWP && !IsEnabledOnNonWP()))
 	{
 		return true;
 	}
@@ -644,6 +672,17 @@ bool USeamlessInstancingEditorSubsystem::TickSelectionCheck(float DeltaTime)
 void USeamlessInstancingEditorSubsystem::OnSelectionChanged(const UTypedElementSelectionSet* SelectionSet)
 {
 	if (!IsSeamlessEnabled())
+	{
+		return;
+	}
+
+	UWorld* World = GEditor->GetEditorWorldContext().World();
+	if (!World)
+	{
+		return;
+	}
+	bool LevelUsesWP = World->GetWorldPartition() != nullptr && World->GetWorldPartition()->bEnableStreaming;
+	if ((LevelUsesWP && !IsEnabledOnWP()) || (!LevelUsesWP && !IsEnabledOnNonWP()))
 	{
 		return;
 	}

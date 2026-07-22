@@ -61,7 +61,7 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 	FToolMenuEntry ToggleEntry = FToolMenuEntry::InitMenuEntry(
 		"ToggleSeamlessInstancing",
 		LOCTEXT("ToggleSeamlessInstancing", "Enable Seamless Instancing"),
-		LOCTEXT("ToggleSeamlessInstancingTooltip", "Enables the seamless instancing system"),
+		LOCTEXT("ToggleSeamlessInstancingTooltip", "Enables the Seamless Instancing system"),
 		FSlateIcon(),
 		FUIAction(
 			FExecuteAction::CreateLambda([InstancingSubsystem]
@@ -86,6 +86,60 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 	InMenu->AddMenuEntry("Seamless Instancing", ToggleEntry);
 
 	InMenu->AddSection("Options", LOCTEXT("OptionsSection", "Options"));
+
+	FToolMenuEntry EnableOnWPEntry = FToolMenuEntry::InitMenuEntry(
+		"EnableOnWP",
+		LOCTEXT("EnableOnWP", "Enable on World Partition levels "),
+		LOCTEXT("EnableOnWPTooltip", "Enables Seamless Instancing on World Partition levels"),
+		FSlateIcon(),
+		FUIAction(
+			FExecuteAction::CreateLambda([InstancingSubsystem]
+			{
+				if (InstancingSubsystem)
+				{
+					InstancingSubsystem->SetEnableOnWP(!InstancingSubsystem->IsEnabledOnWP());
+				}
+			}),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateLambda([InstancingSubsystem]
+			{
+				if (InstancingSubsystem)
+				{
+					return InstancingSubsystem->IsEnabledOnWP();
+				}
+				return true;
+			})
+		),
+		EUserInterfaceActionType::Check
+	);
+	InMenu->AddMenuEntry("Options", EnableOnWPEntry);
+
+	FToolMenuEntry EnableOnNonWPEntry = FToolMenuEntry::InitMenuEntry(
+		"EnableOnNonWP",
+		LOCTEXT("EnableOnNonWP", "Enable on non World Partition levels "),
+		LOCTEXT("EnableOnNonWPTooltip", "Enables Seamless Instancing on non World Partition levels (for use on regular Levels or Level Instances)"),
+		FSlateIcon(),
+		FUIAction(
+			FExecuteAction::CreateLambda([InstancingSubsystem]
+			{
+				if (InstancingSubsystem)
+				{
+					InstancingSubsystem->SetEnableOnNonWP(!InstancingSubsystem->IsEnabledOnNonWP());
+				}
+			}),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateLambda([InstancingSubsystem]
+			{
+				if (InstancingSubsystem)
+				{
+					return InstancingSubsystem->IsEnabledOnNonWP();
+				}
+				return true;
+			})
+		),
+		EUserInterfaceActionType::Check
+	);
+	InMenu->AddMenuEntry("Options", EnableOnNonWPEntry);
 
 	FToolMenuEntry ComponentTypeEntry = FToolMenuEntry::InitSubMenu(
 		"ComponentType",
@@ -168,11 +222,11 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 	);
 	InMenu->AddMenuEntry("Options", ComponentTypeEntry);
 
-	InMenu->AddSection("Actions", LOCTEXT("ActionsSection", "Actions"));
+	InMenu->AddSection("Tools", LOCTEXT("ToolsSection", "Tools"));
 
 	FToolMenuEntry ConvertSMToInstanced = FToolMenuEntry::InitMenuEntry(
 		"ConvertAllSMToInstanced",
-		LOCTEXT("ConvertAllSMToInstanced", "Convert All SM Actors to Instanced"),
+		LOCTEXT("ConvertAllSMToInstanced", "Convert All SM Actors to Instanced "),
 		LOCTEXT("ConvertAllSMToInstancedTooltip", "Converts all StaticMesh actors in the world to instanced static mesh components"),
 		FSlateIcon(),
 		FUIAction(FExecuteAction::CreateLambda([InstancingSubsystem]
@@ -183,11 +237,11 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 			}
 		}))
 	);
-	InMenu->AddMenuEntry("Actions", ConvertSMToInstanced);
+	InMenu->AddMenuEntry("Tools", ConvertSMToInstanced);
 
 	FToolMenuEntry ConvertInstancedToSM = FToolMenuEntry::InitMenuEntry(
 		"ConvertAllInstancedToSM",
-		LOCTEXT("ConvertAllInstancedToSM", "Convert All Instanced to SM Actors"),
+		LOCTEXT("ConvertAllInstancedToSM", "Convert All Instanced to SM Actors "),
 		LOCTEXT("ConvertAllInstancedToSMTooltip", "Converts all instanced static mesh components back to individual static mesh actors"),
 		FSlateIcon(),
 		FUIAction(FExecuteAction::CreateLambda([InstancingSubsystem]
@@ -198,7 +252,7 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 			}
 		}))
 	);
-	InMenu->AddMenuEntry("Actions", ConvertInstancedToSM);
+	InMenu->AddMenuEntry("Tools", ConvertInstancedToSM);
 
 	FToolMenuEntry RecreateInstances = FToolMenuEntry::InitMenuEntry(
 		"RecreateInstances",
@@ -217,7 +271,7 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 			}
 		}))
 	);
-	InMenu->AddMenuEntry("Actions", RecreateInstances);
+	InMenu->AddMenuEntry("Tools", RecreateInstances);
 }
 
 #undef LOCTEXT_NAMESPACE

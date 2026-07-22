@@ -42,6 +42,14 @@ public:
 
 	bool IsSeamlessEnabled() const { return bCachedSeamlessEnabled; }
 
+	void SetEnableOnWP(bool bEnabled);
+
+	bool IsEnabledOnWP() const { return bCachedEnableOnWP; }
+
+	void SetEnableOnNonWP(bool bEnabled);
+
+	bool IsEnabledOnNonWP() const { return bCachedEnableOnNonWP; }
+
 	ESeamlessComponentType GetComponentType() const { return ComponentType; }
 
 	void SetComponentType(ESeamlessComponentType InType);
@@ -71,6 +79,12 @@ private:
 
 	/** Cached value of ComponentType from GEditorPerProjectIni */
 	ESeamlessComponentType ComponentType = ESeamlessComponentType::Auto;
+
+	/** Cached value of bEnableOnWP from GEditorPerProjectIni */
+	bool bCachedEnableOnWP = true;
+
+	/** Cached value of bEnableOnNonWP from GEditorPerProjectIni */
+	bool bCachedEnableOnNonWP = true;
 
 	/** Cached selection-rect start captured in TickSelectionCheck */
 	FIntRect CachedSelectionRect = FIntRect();
