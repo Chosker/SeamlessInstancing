@@ -14,12 +14,14 @@ Enjoy lightweight levels with instancing, with the proper UX of manipulating reg
 - Processes only StaticMeshComponents of StaticMeshActors with Mobility is set to Static, SpatiallyLoaded set to True, and not HiddenInEditor
 - Maintains most StaticMeshComponents' properties (i.e. Material override, collision options, cast shadows, etc) by making different Instanced Components when a different property is needed
 - Pick between ISM, HISM or Automatic (uses ISM for Nanite meshes and HISM for non-Nanite meshes)
+- Converts CustomPrimitiveData into PerInstanceCustomData and back
 - Supports World Partition levels
   - Instances are separated per WP tile and per WP runtime grid
   - Instances are separated per each DataLayers combination
+  - Includes option to disable Seamless Instancing behavior on World Partition levels
 - Supports non World Partition levels
   - Instances are separated per Sublevel
-- Converts CustomPrimitiveData into PerInstanceCustomData and back
+  - Includes option to disable Seamless Instancing behavior on non World Partition levels
 - Works on perspective and ortho viewports
 - Works with pick-based selection and selection box
 - Works seamlessly with Undo/Redo
