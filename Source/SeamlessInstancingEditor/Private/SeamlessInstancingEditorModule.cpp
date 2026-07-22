@@ -209,7 +209,6 @@ void FSeamlessInstancingEditorModule::FillDropdownMenu(UToolMenu* InMenu)
 		{
 			if (InstancingSubsystem)
 			{
-				// FIXME: this doesn't dirty the actors even if there's legit changes
 				TArray<AStaticMeshActor*> CreatedActors = InstancingSubsystem->ConvertAllInstancedToSM();
 				if (!CreatedActors.IsEmpty())
 				{

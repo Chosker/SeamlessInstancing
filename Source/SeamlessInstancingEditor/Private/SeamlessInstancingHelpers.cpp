@@ -625,75 +625,69 @@ uint32 ComputeActorFingerprint(AActor* Actor)
 	FBufferArchive Ar;
 
 	// Hash all ISM components and their instances
+	TArray<UInstancedStaticMeshComponent*> ISMCs;
+	Actor->GetComponents(ISMCs);
+
+	int32 NumISMCs = ISMCs.Num();
+	Ar << NumISMCs;
+
+	for (const UInstancedStaticMeshComponent* ISMC : ISMCs)
 	{
-		TArray<UInstancedStaticMeshComponent*> ISMCs;
-		Actor->GetComponents(ISMCs);
-
-		int32 NumISMCs = ISMCs.Num();
-		Ar << NumISMCs;
-
-		for (const UInstancedStaticMeshComponent* ISMC : ISMCs)
+		if (!ISMC)
 		{
-			if (!ISMC)
+			continue;
+		}
+
+		// Mesh path
+		UStaticMesh* Mesh = ISMC->GetStaticMesh();
+		FString MeshPath = Mesh ? Mesh->GetPathName() : FString();
+		Ar << MeshPath;
+
+		// Number of instances on this component
+		int32 NumInstances = ISMC->GetInstanceCount();
+		Ar << NumInstances;
+
+		// Each instance's world transform
+		for (int32 i = 0; i < NumInstances; ++i)
+		{
+			FTransform InstanceTransform;
+			if (ISMC->GetInstanceTransform(i, InstanceTransform, /*bWorldSpace=*/true))
 			{
-				continue;
-			}
-
-			// Mesh path
-			UStaticMesh* Mesh = ISMC->GetStaticMesh();
-			FString MeshPath = Mesh ? Mesh->GetPathName() : FString();
-			Ar << MeshPath;
-
-			// Number of instances on this component
-			int32 NumInstances = ISMC->GetInstanceCount();
-			Ar << NumInstances;
-
-			// Each instance's world transform
-			for (int32 i = 0; i < NumInstances; ++i)
-			{
-				FTransform InstanceTransform;
-				if (ISMC->GetInstanceTransform(i, InstanceTransform, /*bWorldSpace=*/true))
-				{
-					Ar << InstanceTransform;
-				}
+				Ar << InstanceTransform;
 			}
 		}
+
+		// Component class (ISM / HISM / etc)
+		FName ClassName = ISMC->GetClass()->GetFName();
+		Ar << ClassName;
 	}
 
 	// Actor-level world transform
-	{
-		FTransform WorldTransform = Actor->ActorToWorld();
-		Ar << WorldTransform;
-	}
+	FTransform WorldTransform = Actor->ActorToWorld();
+	Ar << WorldTransform;
 
 	// Runtime grid
-	{
-		FName RuntimeGrid = Actor->GetRuntimeGrid();
-		Ar << RuntimeGrid;
-	}
+	FName RuntimeGrid = Actor->GetRuntimeGrid();
+	Ar << RuntimeGrid;
 
 	// Actor layers (classic layer system)
+	const TArray<FName>& ActorLayers = Actor->Layers;
+	int32 NumLayers = ActorLayers.Num();
+	Ar << NumLayers;
+	for (const FName& Layer : ActorLayers)
 	{
-		const TArray<FName>& ActorLayers = Actor->Layers;
-		int32 NumLayers = ActorLayers.Num();
-		Ar << NumLayers;
-		for (const FName& Layer : ActorLayers)
-		{
-			FString LayerStr = Layer.ToString();
-			Ar << LayerStr;
-		}
+		FString LayerStr = Layer.ToString();
+		Ar << LayerStr;
 	}
 
 	// Data layers
+	const TArray<const UDataLayerAsset*> DataLayers = Actor->GetDataLayerAssets();
+	int32 NumDLs = DataLayers.Num();
+	Ar << NumDLs;
+	for (const UDataLayerAsset* DL : DataLayers)
 	{
-		const TArray<const UDataLayerAsset*> DataLayers = Actor->GetDataLayerAssets();
-		int32 NumDLs = DataLayers.Num();
-		Ar << NumDLs;
-		for (const UDataLayerAsset* DL : DataLayers)
-		{
-			FString DLPath = DL ? DL->GetPathName() : FString();
-			Ar << DLPath;
-		}
+		FString DLPath = DL ? DL->GetPathName() : FString();
+		Ar << DLPath;
 	}
 
 	return FCrc::MemCrc32(Ar.GetData(), Ar.Num());
