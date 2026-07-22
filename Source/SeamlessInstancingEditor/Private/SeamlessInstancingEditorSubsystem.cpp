@@ -559,6 +559,7 @@ void USeamlessInstancingEditorSubsystem::TryBindSelectionEvents()
 		return;
 	}
 
+	// FIXME: switching the editor layout (Window -> Load Layout -> whatever) loses the binding
 	if (ULevelEditorSubsystem* LevelEditorSubsystem = GEditor->GetEditorSubsystem<ULevelEditorSubsystem>())
 	{
 		if (UTypedElementSelectionSet* SelectionSet = LevelEditorSubsystem->GetSelectionSet())
@@ -575,8 +576,7 @@ void USeamlessInstancingEditorSubsystem::TryBindSelectionEvents()
 	// Selection set not ready yet, retry via ticker
 	if (!TickerHandle.IsValid())
 	{
-		TickerHandle = FTSTicker::GetCoreTicker().AddTicker(
-			FTickerDelegate::CreateUObject(this, &USeamlessInstancingEditorSubsystem::TickBindRetry), 0.5f);
+		TickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &USeamlessInstancingEditorSubsystem::TickBindRetry), 0.5f);
 	}
 }
 
