@@ -17,11 +17,11 @@ Enjoy lightweight levels with instancing, with the proper UX of manipulating reg
 - Pick between ISM, HISM or Automatic (uses ISM for Nanite meshes and HISM for non-Nanite meshes)
 - Converts CustomPrimitiveData into PerInstanceCustomData and back
 - Supports World Partition levels
-  - Instances are separated per WP tile and per WP runtime grid
-  - Instances are separated per each DataLayers combination
+  - Instances are grouped per WP tile and per WP runtime grid
+  - Instances are grouped per each DataLayers combination
   - Includes option to disable Seamless Instancing behavior on World Partition levels
 - Supports non World Partition levels
-  - Instances are separated per Sublevel
+  - Instances are grouped per Sublevel
   - Includes option to disable Seamless Instancing behavior on non World Partition levels
 - Works on perspective and ortho viewports
 - Works with pick-based selection and selection box
