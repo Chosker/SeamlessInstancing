@@ -31,4 +31,7 @@ Enjoy lightweight levels with instancing, with the proper UX of manipulating reg
 - One File Per Actor granularity is greatly reduced since components are now merged
 
 ### TO DO
-- More stuff
+- Check behavior with restricted assets from Source Control locks
+
+## Bonus
+- New GPULODFoliageInstancedStaticMeshComponent class to use non-Nanite meshes in the Foliage Mode but contributing to Lumen (relies on r.InstancedStaticMeshes.GpuLod for LODs)
