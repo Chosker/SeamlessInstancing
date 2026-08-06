@@ -18,6 +18,11 @@
 			"Name": "SeamlessInstancingEditor",
 			"Type": "Editor",
 			"LoadingPhase": "PostEngineInit"
+		},
+		{
+			"Name": "Instancing",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
 		}
 	]
 }
