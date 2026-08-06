@@ -1,7 +1,8 @@
 # Seamless Instancing
 
-A UE 5.7+ plugin to handle instancing of Static Mesh Actors seamlessly.
+<img width="423" height="299" alt="image" src="https://github.com/user-attachments/assets/2743477a-7d1d-4a54-a0fd-c946027a661f" />
 
+A UE 5.7+ plugin to handle instancing of Static Mesh Actors seamlessly.
 - De-selecting Static Mesh Actors automatically converts them to instances.
 - Selecting instances automatically converts them back to Static Mesh Actors for easy manipulation.
 
@@ -33,5 +34,5 @@ Enjoy lightweight levels with instancing, with the proper UX of manipulating reg
 ### TO DO
 - Check behavior with restricted assets from Source Control locks
 
-## Bonus
+### Bonus
 - New GPULODFoliageInstancedStaticMeshComponent class to use non-Nanite meshes in the Foliage Mode but contributing to Lumen (relies on r.InstancedStaticMeshes.GpuLod for LODs)
