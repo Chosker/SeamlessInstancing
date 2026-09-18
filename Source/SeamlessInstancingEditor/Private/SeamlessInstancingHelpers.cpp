@@ -57,17 +57,15 @@ bool ShouldInclude(const FProperty* Prop)
 
 	// Skip properties that shouldn't be copied onto the destination ISMC.
 	static const TSet<FName> SkipNames = {
-		TEXT("CreationMethod"),              // would overwrite AddInstanceComponent's setting
-		TEXT("ComponentInstanceDataCache"),  // internal cache
-		TEXT("RelativeLocation"),            // transform
+		TEXT("CreationMethod"),					// would overwrite AddInstanceComponent's setting
+		TEXT("ComponentInstanceDataCache"),		// internal cache
+		TEXT("RelativeLocation"),				// transform
 		TEXT("RelativeRotation"),
 		TEXT("RelativeScale3D"),
-		TEXT("AttachSocketName"),            // attachment wiring
-		TEXT("ComponentTags"),               // labels only; the SrcHash_* tag we stamp on the ISMC
-		                                     // lives here and would cause hash mismatches if included,
-		                                     // and two identical components with different tags should
-		                                     // still merge into the same ISM group
-		TEXT("CustomPrimitiveData"),         // transferred explicitly as per-instance custom data
+		TEXT("AttachSocketName"),				// attachment wiring
+		TEXT("ComponentTags"),					// labels only. the SrcHash_* tag we stamp on the ISMC lives here and would cause hash mismatches if included
+		TEXT("CustomPrimitiveData"),			// transferred explicitly as per-instance custom data
+		TEXT("bHasPerInstanceHitProxies"),
 	};
 	if (SkipNames.Contains(Prop->GetFName()))
 	{

@@ -362,7 +362,7 @@ void USeamlessInstancingEditorSubsystem::ConvertSMToInstanced(const TArray<AStat
 		InstanceKey.Mesh = SMC->GetStaticMesh();
 		InstanceKey.PropertiesHash = HashComponentProperties(SMC, RelevantProperties);
 
-		const bool bUseHISM = (ComponentType == ESeamlessComponentType::HISM) || (ComponentType == ESeamlessComponentType::Auto && InstanceKey.Mesh && !InstanceKey.Mesh->NaniteSettings.bEnabled);
+		const bool bUseHISM = (ComponentType == ESeamlessComponentType::HISM) || (ComponentType == ESeamlessComponentType::Auto && InstanceKey.Mesh && !InstanceKey.Mesh->GetNaniteSettings().bEnabled);
 
 		// Scan the aggregate for an existing ISMC with matching mesh, properties, and component type
 		UInstancedStaticMeshComponent* ISMC = nullptr;
@@ -840,7 +840,7 @@ void USeamlessInstancingEditorSubsystem::OnPreSavePackage(UPackage* Package, FOb
 
 	// Collect all objects in the package: WP actor packages and non-WP level packages
 	TArray<UObject*> Objects;
-	GetObjectsWithOuter(Package, Objects, true);
+	GetObjectsWithOuter(Package, Objects);
 
 	for (UObject* Obj : Objects)
 	{
